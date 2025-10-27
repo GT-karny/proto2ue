@@ -8,6 +8,9 @@ __all__ = [
     "DescriptorLoader",
     "OptionContext",
     "OptionValidator",
+    "DefaultTemplateRenderer",
+    "GeneratedFile",
+    "ITemplateRenderer",
     "model",
     "TypeMapper",
     "UEEnum",
@@ -28,6 +31,16 @@ def __getattr__(name: str):
             "DescriptorLoader": DescriptorLoader,
             "OptionContext": OptionContext,
             "OptionValidator": OptionValidator,
+        }
+        return mapping[name]
+
+    if name in {"DefaultTemplateRenderer", "GeneratedFile", "ITemplateRenderer"}:
+        from .codegen import DefaultTemplateRenderer, GeneratedFile, ITemplateRenderer
+
+        mapping = {
+            "DefaultTemplateRenderer": DefaultTemplateRenderer,
+            "GeneratedFile": GeneratedFile,
+            "ITemplateRenderer": ITemplateRenderer,
         }
         return mapping[name]
 
