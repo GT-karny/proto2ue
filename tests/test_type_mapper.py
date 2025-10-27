@@ -218,6 +218,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert mood_field.ue_type == "TOptional<EPersonMood>"
 
     assert len(person.oneofs) == 1
+
     contact_wrapper = person.oneofs[0]
     assert isinstance(contact_wrapper, UEOneofWrapper)
     assert contact_wrapper.ue_name == "FPersonContactOneof"
@@ -236,4 +237,67 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     color_enum = ue_file.enums[0]
     assert color_enum.ue_name == "EColor"
     assert [value.name for value in color_enum.values] == ["COLOR_RED", "COLOR_GREEN"]
+
+
+def test_type_mapper_registers_imported_symbols_across_files() -> None:
+    shared_enum = model.Enum(
+        name="SharedState",
+        full_name="common.SharedState",
+        values=[
+            model.EnumValue(name="SHARED_STATE_ENABLED", number=0),
+            model.EnumValue(name="SHARED_STATE_DISABLED", number=1),
+        ],
+    )
+
+    shared_message = model.Message(name="SharedMessage", full_name="common.SharedMessage")
+
+    shared_file = model.ProtoFile(
+        name="shared.proto",
+        package="common",
+        messages=[shared_message],
+        enums=[shared_enum],
+    )
+
+    imported_message_field = model.Field(
+        name="shared_message",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.MESSAGE,
+        type_name="common.SharedMessage",
+        resolved_type=shared_message,
+    )
+
+    imported_enum_field = model.Field(
+        name="shared_state",
+        number=2,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.ENUM,
+        type_name="common.SharedState",
+        resolved_type=shared_enum,
+    )
+
+    consumer_message = model.Message(
+        name="Consumer",
+        full_name="consumer.Consumer",
+        fields=[imported_message_field, imported_enum_field],
+    )
+
+    consumer_file = model.ProtoFile(
+        name="consumer.proto",
+        package="consumer",
+        dependencies=["shared.proto"],
+        messages=[consumer_message],
+    )
+
+    mapper = TypeMapper()
+    mapper.register_files([shared_file, consumer_file])
+
+    ue_file = mapper.map_file(consumer_file)
+
+    assert len(ue_file.messages) == 1
+    ue_consumer = ue_file.messages[0]
+    assert ue_consumer.fields[0].base_type == "FSharedMessage"
+    assert ue_consumer.fields[0].ue_type == "TOptional<FSharedMessage>"
+    assert ue_consumer.fields[1].base_type == "ESharedState"
+    assert ue_consumer.fields[1].ue_type == "TOptional<ESharedState>"
 
