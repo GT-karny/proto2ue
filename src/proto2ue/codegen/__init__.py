@@ -209,10 +209,13 @@ class DefaultTemplateRenderer:
         metadata_items = metadata or {}
         if metadata_items:
             meta_entries.extend(
-                f'{key}="{value}"' for key, value in sorted(metadata_items.items())
+                f'{key}="{self._escape_metadata_value(value)}"'
+                for key, value in sorted(metadata_items.items())
             )
         if category and "Category" not in metadata_items:
-            meta_entries.append(f'Category="{category}"')
+            meta_entries.append(
+                f'Category="{self._escape_metadata_value(category)}"'
+            )
         if meta_entries:
             items.append(f"meta=({', '.join(meta_entries)})")
         if not items:
@@ -225,15 +228,30 @@ class DefaultTemplateRenderer:
             items.append("BlueprintReadOnly" if field.blueprint_read_only else "BlueprintReadWrite")
         items.extend(self._dedupe_preserve_order(field.uproperty_specifiers))
         if field.category:
-            items.append(f'Category="{field.category}"')
+            items.append(
+                f'Category="{self._escape_metadata_value(field.category)}"'
+            )
         if field.uproperty_metadata:
             meta_entries = [
-                f'{key}="{value}"' for key, value in sorted(field.uproperty_metadata.items())
+                f'{key}="{self._escape_metadata_value(value)}"'
+                for key, value in sorted(field.uproperty_metadata.items())
             ]
             items.append(f"meta=({', '.join(meta_entries)})")
         if not items and not field.blueprint_exposed:
             return None
         return ", ".join(items)
+
+    def _escape_metadata_value(self, value: str) -> str:
+        """Escape a value for safe inclusion in a C++ string literal."""
+
+        escaped_chars = {
+            "\\": "\\\\",
+            '"': '\\"',
+            "\n": "\\n",
+            "\r": "\\r",
+            "\t": "\\t",
+        }
+        return "".join(escaped_chars.get(ch, ch) for ch in value)
 
     def _dedupe_preserve_order(self, specifiers: Iterable[str]) -> List[str]:
         seen = set()
