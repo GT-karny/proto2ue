@@ -238,7 +238,7 @@ class DefaultTemplateRenderer:
             ]
             items.append(f"meta=({', '.join(meta_entries)})")
         if not items and not field.blueprint_exposed:
-            return None
+            return ""
         return ", ".join(items)
 
     def _escape_metadata_value(self, value: str) -> str:
