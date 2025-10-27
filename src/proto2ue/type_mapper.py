@@ -27,6 +27,10 @@ class UEEnum:
     full_name: str
     ue_name: str
     values: List[UEEnumValue] = field(default_factory=list)
+    blueprint_type: bool = True
+    specifiers: List[str] = field(default_factory=list)
+    metadata: Dict[str, str] = field(default_factory=dict)
+    category: Optional[str] = None
     source: model.Enum | None = None
 
 
@@ -49,6 +53,11 @@ class UEField:
     oneof_group: Optional[str]
     json_name: Optional[str]
     default_value: Optional[str]
+    blueprint_exposed: bool = True
+    blueprint_read_only: bool = False
+    uproperty_specifiers: List[str] = field(default_factory=list)
+    uproperty_metadata: Dict[str, str] = field(default_factory=dict)
+    category: Optional[str] = None
     source: model.Field | None = None
 
 
@@ -83,6 +92,10 @@ class UEMessage:
     nested_messages: List["UEMessage"] = field(default_factory=list)
     nested_enums: List[UEEnum] = field(default_factory=list)
     oneofs: List[UEOneofWrapper] = field(default_factory=list)
+    blueprint_type: bool = True
+    struct_specifiers: List[str] = field(default_factory=list)
+    struct_metadata: Dict[str, str] = field(default_factory=dict)
+    category: Optional[str] = None
     source: model.Message | None = None
 
 
@@ -237,6 +250,12 @@ class TypeMapper:
     # Conversion helpers ---------------------------------------------------
     def _convert_enum(self, enum: model.Enum) -> UEEnum:
         ue_name = self._lookup_symbol(enum, enum.full_name)
+        unreal_options = self._extract_unreal_options(enum.options)
+        blueprint_type = self._as_bool(unreal_options.get("blueprint_type"), default=True)
+        specifiers = self._as_str_list(unreal_options.get("specifiers"))
+        metadata = self._as_str_dict(unreal_options.get("meta"))
+        category = self._as_optional_str(unreal_options.get("category"))
+
         values = [
             UEEnumValue(name=value.name, number=value.number, source=value)
             for value in enum.values
@@ -246,11 +265,21 @@ class TypeMapper:
             full_name=enum.full_name,
             ue_name=ue_name,
             values=values,
+            blueprint_type=blueprint_type,
+            specifiers=specifiers,
+            metadata=metadata,
+            category=category,
             source=enum,
         )
 
     def _convert_message(self, message: model.Message) -> UEMessage:
         ue_name = self._lookup_symbol(message, message.full_name)
+
+        unreal_options = self._extract_unreal_options(message.options)
+        blueprint_type = self._as_bool(unreal_options.get("blueprint_type"), default=True)
+        struct_specifiers = self._as_str_list(unreal_options.get("struct_specifiers"))
+        struct_metadata = self._as_str_dict(unreal_options.get("meta"))
+        category = self._as_optional_str(unreal_options.get("category"))
 
         fields: List[UEField] = []
         field_map: Dict[int, UEField] = {}
@@ -271,6 +300,10 @@ class TypeMapper:
             nested_messages=nested_messages,
             nested_enums=nested_enums,
             oneofs=oneofs,
+            blueprint_type=blueprint_type,
+            struct_specifiers=struct_specifiers,
+            struct_metadata=struct_metadata,
+            category=category,
             source=message,
         )
 
@@ -296,6 +329,13 @@ class TypeMapper:
         )
 
     def _convert_field(self, field: model.Field) -> UEField:
+        unreal_options = self._extract_unreal_options(field.options)
+        blueprint_exposed = self._as_bool(unreal_options.get("blueprint_exposed"), default=True)
+        blueprint_read_only = self._as_bool(unreal_options.get("blueprint_read_only"), default=False)
+        uproperty_specifiers = self._as_str_list(unreal_options.get("specifiers"))
+        uproperty_metadata = self._as_str_dict(unreal_options.get("meta"))
+        category = self._as_optional_str(unreal_options.get("category"))
+
         if field.kind is model.FieldKind.MAP:
             base_type, key_type, value_type = self._map_field_types(field)
             ue_type = base_type
@@ -337,6 +377,11 @@ class TypeMapper:
             oneof_group=field.oneof,
             json_name=field.json_name,
             default_value=field.default_value,
+            blueprint_exposed=blueprint_exposed,
+            blueprint_read_only=blueprint_read_only,
+            uproperty_specifiers=uproperty_specifiers,
+            uproperty_metadata=uproperty_metadata,
+            category=category,
             source=field,
         )
 
@@ -394,4 +439,66 @@ class TypeMapper:
         if kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
             return self._lookup_symbol(resolved, type_name)
         raise ValueError(f"Unsupported map {position} kind '{kind}'")
+
+    # Metadata helpers -----------------------------------------------------
+    def _extract_unreal_options(self, options: Optional[dict]) -> Dict[str, object]:
+        if not isinstance(options, dict):
+            return {}
+        unreal = options.get("unreal")
+        if isinstance(unreal, dict):
+            return unreal
+        return {}
+
+    def _as_bool(self, value: object, *, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            lowered = value.strip().lower()
+            if lowered in {"true", "1", "yes", "on"}:
+                return True
+            if lowered in {"false", "0", "no", "off"}:
+                return False
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return default
+
+    def _as_optional_str(self, value: object) -> Optional[str]:
+        if value is None:
+            return None
+        if isinstance(value, str):
+            stripped = value.strip()
+            return stripped or None
+        return str(value)
+
+    def _as_str_list(self, value: object) -> List[str]:
+        if value is None:
+            return []
+        if isinstance(value, (list, tuple)):
+            result: List[str] = []
+            for item in value:
+                if item is None:
+                    continue
+                stringified = str(item)
+                if stringified:
+                    result.append(stringified)
+            return result
+        stringified = str(value)
+        return [stringified] if stringified else []
+
+    def _as_str_dict(self, value: object) -> Dict[str, str]:
+        if not isinstance(value, dict):
+            return {}
+        result: Dict[str, str] = {}
+        for key, raw_value in value.items():
+            if key is None:
+                continue
+            str_key = str(key)
+            if not str_key:
+                continue
+            if raw_value is None:
+                continue
+            result[str_key] = str(raw_value)
+        return result
 
