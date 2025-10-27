@@ -6,18 +6,14 @@ from typing import Any
 
 from google.protobuf.compiler import plugin_pb2
 
+from .descriptor_loader import DescriptorLoader
+
 
 def analyze_descriptors(request: plugin_pb2.CodeGeneratorRequest) -> Any:
-    """Hook for descriptor analysis service to produce an intermediate representation.
+    """Normalize descriptors into the proto2ue intermediate model."""
 
-    The actual implementation will be introduced alongside the descriptor analysis
-    service. For now, this function acts as a placeholder to keep the call site
-    stable.
-    """
-
-    # TODO: Integrate descriptor analysis service implemented in Issue 2.
-    del request
-    return None
+    loader = DescriptorLoader(request)
+    return loader.load()
 
 
 def main() -> None:
