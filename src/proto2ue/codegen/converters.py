@@ -651,12 +651,32 @@ class ConvertersTemplate:
                 continue
             field_name = source.name
             if field.is_map:
+                map_entry = field.source.map_entry
+                if map_entry is None:
+                    raise ValueError("Map field is missing map entry metadata")
+                map_container = f"ProtoMap_{field.name}"
                 lines.append(
-                    f"    // Map field {field_name} handling will copy key/value pairs."
+                    f"    auto& {map_container} = *Out.mutable_{field_name}();"
                 )
-                lines.append(
-                    f"    for (const auto& Kvp : Source.{field.name}) {{ /* populate Out.mutable_{field_name}() */ }}"
-                )
+                if map_entry.value_kind is model.FieldKind.MESSAGE:
+                    lines.append(
+                        f"    for (const auto& Kvp : Source.{field.name}) {{"
+                    )
+                    lines.append(
+                        f"        auto& Added = {map_container}[Kvp.Key];"
+                    )
+                    lines.append(
+                        "        ToProto(Kvp.Value, Added, Context);"
+                    )
+                    lines.append("    }")
+                else:
+                    lines.append(
+                        f"    for (const auto& Kvp : Source.{field.name}) {{"
+                    )
+                    lines.append(
+                        f"        {map_container}[Kvp.Key] = Kvp.Value;"
+                    )
+                    lines.append("    }")
             elif field.is_repeated:
                 if field.kind is model.FieldKind.MESSAGE:
                     lines.append(
@@ -714,9 +734,28 @@ class ConvertersTemplate:
                 continue
             field_name = source.name
             if field.is_map:
+                map_entry = field.source.map_entry
+                if map_entry is None:
+                    raise ValueError("Map field is missing map entry metadata")
                 lines.append(
-                    f"    for (const auto& Kvp : Source.{field_name}()) {{ /* populate Out.{field.name} */ }}"
+                    f"    for (const auto& Kvp : Source.{field_name}()) {{"
                 )
+                if map_entry.value_kind is model.FieldKind.MESSAGE:
+                    value_type = field.map_value_type or "auto"
+                    lines.append(
+                        f"        {value_type} Value;"
+                    )
+                    lines.append(
+                        "        bOk = FromProto(Kvp.second, Value, Context) && bOk;"
+                    )
+                    lines.append(
+                        f"        Out.{field.name}.Add(Kvp.first, Value);"
+                    )
+                else:
+                    lines.append(
+                        f"        Out.{field.name}.Add(Kvp.first, Kvp.second);"
+                    )
+                lines.append("    }")
             elif field.is_repeated:
                 if field.kind is model.FieldKind.MESSAGE:
                     lines.append(
