@@ -141,9 +141,9 @@ class DefaultTemplateRenderer:
         collected: List[UEMessage] = []
 
         def visit(message: UEMessage) -> None:
-            collected.append(message)
             for nested in message.nested_messages:
                 visit(nested)
+            collected.append(message)
 
         for message in ue_file.messages:
             visit(message)
