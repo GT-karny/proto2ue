@@ -47,6 +47,7 @@ class PythonConvertersRuntime:
 
     def __init__(self, ue_file: UEProtoFile) -> None:
         self._messages: Dict[str, UEMessage] = {}
+        self._external_cache: Dict[str, UEMessage] = {}
         for message in ue_file.messages:
             self._register_message(message)
 
@@ -89,9 +90,112 @@ class PythonConvertersRuntime:
     def _register_message(self, message: UEMessage) -> None:
         if not message.source:
             raise ValueError("UEMessage is missing original protobuf metadata")
-        self._messages[message.source.full_name] = message
+        full_name = message.source.full_name
+        if full_name in self._messages:
+            return
+        self._messages[full_name] = message
         for nested in message.nested_messages:
             self._register_message(nested)
+        self._register_field_dependencies(message)
+
+    def _register_field_dependencies(self, message: UEMessage) -> None:
+        for field in message.fields:
+            source = field.source
+            if source is None:
+                raise ValueError(f"Field '{field.name}' is missing source metadata")
+            if field.kind is model.FieldKind.MESSAGE:
+                resolved = source.resolved_type
+                if isinstance(resolved, model.Message):
+                    self._ensure_model_message_registered(resolved)
+            if field.is_map and source.map_entry:
+                entry = source.map_entry
+                if (
+                    entry.value_kind is model.FieldKind.MESSAGE
+                    and isinstance(entry.value_resolved_type, model.Message)
+                ):
+                    self._ensure_model_message_registered(entry.value_resolved_type)
+
+    def _ensure_model_message_registered(self, message: model.Message) -> UEMessage:
+        existing = self._messages.get(message.full_name)
+        if existing is not None:
+            return existing
+        cached = self._external_cache.get(message.full_name)
+        if cached is None:
+            cached = self._convert_model_message(message)
+            self._external_cache[message.full_name] = cached
+        self._register_message(cached)
+        return cached
+
+    def _convert_model_message(self, message: model.Message) -> UEMessage:
+        cached = self._external_cache.get(message.full_name)
+        if cached is not None:
+            return cached
+
+        ue_message = UEMessage(
+            name=message.name,
+            full_name=message.full_name,
+            ue_name=message.name,
+            fields=[],
+            nested_messages=[],
+            nested_enums=[],
+            oneofs=[],
+            blueprint_type=True,
+            struct_specifiers=[],
+            struct_metadata={},
+            category=None,
+            source=message,
+        )
+        self._external_cache[message.full_name] = ue_message
+
+        ue_message.fields = [self._convert_model_field(field) for field in message.fields]
+        ue_message.nested_messages = [
+            self._convert_model_message(nested) for nested in message.nested_messages
+        ]
+        return ue_message
+
+    def _convert_model_field(self, field: model.Field) -> UEField:
+        is_map = field.kind is model.FieldKind.MAP
+        is_repeated = field.cardinality is model.FieldCardinality.REPEATED and not is_map
+        is_optional = (
+            field.cardinality is model.FieldCardinality.OPTIONAL and field.oneof is None
+        )
+
+        base_type = field.type_name or field.scalar or ""
+        ue_type = base_type
+
+        map_key_type: Optional[str]
+        map_value_type: Optional[str]
+        map_key_type = None
+        map_value_type = None
+        if field.map_entry:
+            map_key_type = field.map_entry.key_type_name or field.map_entry.key_scalar or ""
+            map_value_type = (
+                field.map_entry.value_type_name or field.map_entry.value_scalar or ""
+            )
+
+        return UEField(
+            name=field.name,
+            number=field.number,
+            base_type=base_type,
+            ue_type=ue_type,
+            kind=field.kind,
+            cardinality=field.cardinality,
+            is_optional=is_optional,
+            is_repeated=is_repeated,
+            is_map=is_map,
+            container=None,
+            map_key_type=map_key_type,
+            map_value_type=map_value_type,
+            oneof_group=field.oneof,
+            json_name=field.json_name,
+            default_value=field.default_value,
+            blueprint_exposed=True,
+            blueprint_read_only=False,
+            uproperty_specifiers=[],
+            uproperty_metadata={},
+            category=None,
+            source=field,
+        )
 
     # Encoding helpers ---------------------------------------------------
     def _encode_message(
@@ -438,6 +542,8 @@ class ConvertersTemplate:
         lines.append('#include "Kismet/BlueprintFunctionLibrary.h"')
         header_include = self._generated_header_name()
         lines.append(f'#include "{header_include}"')
+        for include in self._dependency_converter_includes():
+            lines.append(f'#include "{include}"')
         lines.append("")
         lines.append("namespace Proto2UE::Converters {")
         lines.append("")
@@ -498,6 +604,8 @@ class ConvertersTemplate:
             f"// Generated conversion helpers by proto2ue. Source: {self._ue_file.name}"
         )
         lines.append(f'#include "{header_include}"')
+        for include in self._dependency_converter_includes():
+            lines.append(f'#include "{include}"')
         lines.append("#include \"google/protobuf/message.h\"")
         lines.append("")
         lines.append("namespace Proto2UE::Converters {")
@@ -672,6 +780,22 @@ class ConvertersTemplate:
     def _generated_converters_header(self) -> str:
         base = self._base_name()
         return f"{base}.proto2ue.converters.h"
+
+    def _dependency_converter_includes(self) -> List[str]:
+        source = self._ue_file.source
+        if source is None:
+            return []
+        includes = []
+        seen = set()
+        for dependency in source.dependencies:
+            if dependency == source.name:
+                continue
+            base = dependency[:-6] if dependency.endswith(".proto") else dependency
+            include = f"{base}.proto2ue.converters.h"
+            if include not in seen:
+                seen.add(include)
+                includes.append(include)
+        return sorted(includes)
 
     def _base_name(self) -> str:
         if self._ue_file.name.endswith(".proto"):
