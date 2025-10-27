@@ -36,6 +36,8 @@ def generate_code(
     type_mapper = TypeMapper()
     renderer = renderer or DefaultTemplateRenderer()
 
+    type_mapper.register_files(loader.files.values())
+
     for file_name in files_to_generate:
         proto_file = loader.get_file(file_name)
         ue_file = type_mapper.map_file(proto_file)

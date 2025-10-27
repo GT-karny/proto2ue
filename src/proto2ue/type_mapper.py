@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 import re
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import model
 
@@ -140,18 +141,30 @@ class TypeMapper:
         self._symbol_table: Dict[str, _UESymbol] = {}
         self._package: Optional[str] = None
 
+    def register_files(self, proto_files: Iterable[model.ProtoFile]) -> None:
+        """Register symbols for the provided proto files."""
+
+        for proto_file in proto_files:
+            self.register_file(proto_file)
+
+    def register_file(self, proto_file: model.ProtoFile) -> None:
+        """Register symbols for a single proto file."""
+
+        with self._package_scope(proto_file.package):
+            for enum in proto_file.enums:
+                self._register_enum(enum)
+            for message in proto_file.messages:
+                self._register_message(message)
+
     def map_file(self, proto_file: model.ProtoFile) -> UEProtoFile:
         """Convert a :class:`model.ProtoFile` into :class:`UEProtoFile`."""
 
-        self._package = proto_file.package
-        self._symbol_table = {}
-        for enum in proto_file.enums:
-            self._register_enum(enum)
-        for message in proto_file.messages:
-            self._register_message(message)
+        self.register_file(proto_file)
 
-        messages = [self._convert_message(message) for message in proto_file.messages]
-        enums = [self._convert_enum(enum) for enum in proto_file.enums]
+        with self._package_scope(proto_file.package):
+            messages = [self._convert_message(message) for message in proto_file.messages]
+            enums = [self._convert_enum(enum) for enum in proto_file.enums]
+
         return UEProtoFile(
             name=proto_file.name,
             package=proto_file.package,
@@ -159,6 +172,15 @@ class TypeMapper:
             enums=enums,
             source=proto_file,
         )
+
+    @contextmanager
+    def _package_scope(self, package: Optional[str]):
+        previous = self._package
+        self._package = package
+        try:
+            yield
+        finally:
+            self._package = previous
 
     # Symbol table helpers -------------------------------------------------
     def _register_enum(self, enum: model.Enum) -> None:
