@@ -205,10 +205,15 @@ class DefaultTemplateRenderer:
         if blueprint:
             items.append("BlueprintType")
         items.extend(self._dedupe_preserve_order(specifiers))
-        if category:
-            items.append(f'Category="{category}"')
-        if metadata:
-            meta_entries = [f'{key}="{value}"' for key, value in sorted(metadata.items())]
+        meta_entries: List[str] = []
+        metadata_items = metadata or {}
+        if metadata_items:
+            meta_entries.extend(
+                f'{key}="{value}"' for key, value in sorted(metadata_items.items())
+            )
+        if category and "Category" not in metadata_items:
+            meta_entries.append(f'Category="{category}"')
+        if meta_entries:
             items.append(f"meta=({', '.join(meta_entries)})")
         if not items:
             return ""
