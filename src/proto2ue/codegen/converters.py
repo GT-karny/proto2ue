@@ -544,13 +544,34 @@ class ConvertersTemplate:
                     f"    for (const auto& Kvp : Source.{field.name}) {{ /* populate Out.mutable_{field_name}() */ }}"
                 )
             elif field.is_repeated:
-                lines.append(
-                    f"    for (const auto& Item : Source.{field.name}) {{ Out.add_{field_name}(Item); }}"
-                )
+                if field.kind is model.FieldKind.MESSAGE:
+                    lines.append(
+                        f"    for (const auto& Item : Source.{field.name}) {{"
+                    )
+                    lines.append(
+                        f"        auto* Added = Out.add_{field_name}();"
+                    )
+                    lines.append(
+                        "        ToProto(Item, *Added, Context);"
+                    )
+                    lines.append("    }")
+                else:
+                    lines.append(
+                        f"    for (const auto& Item : Source.{field.name}) {{ Out.add_{field_name}(Item); }}"
+                    )
             elif field.kind is model.FieldKind.MESSAGE:
-                lines.append(
-                    f"    if (Source.{field.name}.IsSet()) {{ ToProto(Source.{field.name}.GetValue(), *Out.mutable_{field_name}(), Context); }}"
-                )
+                if field.is_optional:
+                    lines.append(
+                        f"    if (Source.{field.name}.IsSet()) {{"
+                    )
+                    lines.append(
+                        f"        ToProto(Source.{field.name}.GetValue(), *Out.mutable_{field_name}(), Context);"
+                    )
+                    lines.append("    }")
+                else:
+                    lines.append(
+                        f"    ToProto(Source.{field.name}, *Out.mutable_{field_name}(), Context);"
+                    )
             else:
                 condition = (
                     f"Source.{field.name}.IsSet()" if field.is_optional else "true"
@@ -583,13 +604,34 @@ class ConvertersTemplate:
                     f"    for (const auto& Kvp : Source.{field_name}()) {{ /* populate Out.{field.name} */ }}"
                 )
             elif field.is_repeated:
-                lines.append(
-                    f"    for (const auto& Item : Source.{field_name}()) {{ Out.{field.name}.Add(Item); }}"
-                )
+                if field.kind is model.FieldKind.MESSAGE:
+                    lines.append(
+                        f"    for (const auto& Item : Source.{field_name}()) {{"
+                    )
+                    lines.append(
+                        f"        auto& Added = Out.{field.name}.Emplace_GetRef();"
+                    )
+                    lines.append(
+                        "        bOk = FromProto(Item, Added, Context) && bOk;"
+                    )
+                    lines.append("    }")
+                else:
+                    lines.append(
+                        f"    for (const auto& Item : Source.{field_name}()) {{ Out.{field.name}.Add(Item); }}"
+                    )
             elif field.kind is model.FieldKind.MESSAGE:
-                lines.append(
-                    f"    if (Source.has_{field_name}()) {{ FromProto(Source.{field_name}(), Out.{field.name}.Emplace_GetRef(), Context); }}"
-                )
+                if field.is_optional:
+                    lines.append(
+                        f"    if (Source.has_{field_name}()) {{"
+                    )
+                    lines.append(
+                        f"        bOk = FromProto(Source.{field_name}(), Out.{field.name}.Emplace_GetRef(), Context) && bOk;"
+                    )
+                    lines.append("    }")
+                else:
+                    lines.append(
+                        f"    bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
+                    )
             else:
                 lines.append(f"    Out.{field.name} = Source.{field_name}();")
         lines.append("    return bOk && (!Context || !Context->HasErrors());")
