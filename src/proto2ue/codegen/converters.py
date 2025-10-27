@@ -786,7 +786,12 @@ class ConvertersTemplate:
                         f"    bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
                     )
             else:
-                lines.append(f"    Out.{field.name} = Source.{field_name}();")
+                if field.is_optional:
+                    lines.append(
+                        f"    if (Source.has_{field_name}()) {{ Out.{field.name} = Source.{field_name}(); }}"
+                    )
+                else:
+                    lines.append(f"    Out.{field.name} = Source.{field_name}();")
         lines.append("    return bOk && (!Context || !Context->HasErrors());")
         lines.append("}")
         return lines
