@@ -552,7 +552,9 @@ class ConvertersTemplate:
                     f"    if (Source.{field.name}.IsSet()) {{ ToProto(Source.{field.name}.GetValue(), *Out.mutable_{field_name}(), Context); }}"
                 )
             else:
-                condition = """Source.{0}.IsSet()""" if field.is_optional else "true"
+                condition = (
+                    f"Source.{field.name}.IsSet()" if field.is_optional else "true"
+                )
                 assignment = (
                     f"Out.set_{field_name}(Source.{field.name}.GetValue());"
                     if field.is_optional
