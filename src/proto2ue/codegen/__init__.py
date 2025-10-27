@@ -131,9 +131,10 @@ class DefaultTemplateRenderer:
             metadata=enum.metadata,
         )
         if specifiers:
-            lines = [f"{indent}UENUM{specifiers}"]
+            macro_line = f"{indent}UENUM{specifiers}"
         else:
-            lines = []
+            macro_line = f"{indent}UENUM()"
+        lines = [macro_line]
         lines.append(f"{indent}enum class {enum.ue_name} : int32 {{")
         for value in enum.values:
             lines.append(f"{indent}    {value.name} = {value.number},")
