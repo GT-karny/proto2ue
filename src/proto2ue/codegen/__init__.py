@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable, List, Protocol
+from typing import Dict, Iterable, List, Protocol
 
-from ..type_mapper import UEEnum, UEMessage, UEProtoFile
+from ..type_mapper import UEEnum, UEField, UEMessage, UEProtoFile
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +124,17 @@ class DefaultTemplateRenderer:
 
     def _render_enum(self, enum: UEEnum, *, indent_level: int) -> List[str]:
         indent = "    " * indent_level
-        lines = [f"{indent}enum class {enum.ue_name} : int32 {{"]
+        specifiers = self._format_macro_specifiers(
+            blueprint=enum.blueprint_type,
+            specifiers=enum.specifiers,
+            category=enum.category,
+            metadata=enum.metadata,
+        )
+        if specifiers:
+            lines = [f"{indent}UENUM{specifiers}"]
+        else:
+            lines = []
+        lines.append(f"{indent}enum class {enum.ue_name} : int32 {{")
         for value in enum.values:
             lines.append(f"{indent}    {value.name} = {value.number},")
         lines.append(f"{indent}}};")
@@ -144,9 +154,27 @@ class DefaultTemplateRenderer:
 
     def _render_message(self, message: UEMessage, *, indent_level: int) -> List[str]:
         indent = "    " * indent_level
-        lines = [f"{indent}struct {message.ue_name} {{"]
+        struct_specifiers = self._format_macro_specifiers(
+            blueprint=message.blueprint_type,
+            specifiers=message.struct_specifiers,
+            category=message.category,
+            metadata=message.struct_metadata,
+        )
+        lines: List[str] = []
+        if struct_specifiers:
+            lines.append(f"{indent}USTRUCT{struct_specifiers}")
+        else:
+            lines.append(f"{indent}USTRUCT()")
+        lines.append(f"{indent}struct {message.ue_name} {{")
+        lines.append(f"{indent}    GENERATED_BODY()")
         if message.fields:
             for field in message.fields:
+                specifiers = self._format_property_specifiers(field)
+                if specifiers is not None:
+                    if specifiers:
+                        lines.append(f"{indent}    UPROPERTY({specifiers})")
+                    else:
+                        lines.append(f"{indent}    UPROPERTY()")
                 lines.append(f"{indent}    {field.ue_type} {field.name}{{}};")
         else:
             lines.append(f"{indent}    // No fields declared.")
@@ -155,6 +183,53 @@ class DefaultTemplateRenderer:
             lines.append(f"{indent}    // oneof {oneof.name}: {case_names}")
         lines.append(f"{indent}}};")
         return lines
+
+    def _format_macro_specifiers(
+        self,
+        *,
+        blueprint: bool,
+        specifiers: List[str],
+        category: str | None,
+        metadata: Dict[str, str],
+    ) -> str:
+        items: List[str] = []
+        if blueprint:
+            items.append("BlueprintType")
+        items.extend(self._dedupe_preserve_order(specifiers))
+        if category:
+            items.append(f'Category="{category}"')
+        if metadata:
+            meta_entries = [f'{key}="{value}"' for key, value in sorted(metadata.items())]
+            items.append(f"meta=({', '.join(meta_entries)})")
+        if not items:
+            return ""
+        return f"({', '.join(items)})"
+
+    def _format_property_specifiers(self, field: UEField) -> str | None:
+        items: List[str] = []
+        if field.blueprint_exposed:
+            items.append("BlueprintReadOnly" if field.blueprint_read_only else "BlueprintReadWrite")
+        items.extend(self._dedupe_preserve_order(field.uproperty_specifiers))
+        if field.category:
+            items.append(f'Category="{field.category}"')
+        if field.uproperty_metadata:
+            meta_entries = [
+                f'{key}="{value}"' for key, value in sorted(field.uproperty_metadata.items())
+            ]
+            items.append(f"meta=({', '.join(meta_entries)})")
+        if not items and not field.blueprint_exposed:
+            return None
+        return ", ".join(items)
+
+    def _dedupe_preserve_order(self, specifiers: Iterable[str]) -> List[str]:
+        seen = set()
+        result: List[str] = []
+        for specifier in specifiers:
+            if specifier in seen:
+                continue
+            seen.add(specifier)
+            result.append(specifier)
+        return result
 
     def _collect_messages(self, ue_file: UEProtoFile) -> List[UEMessage]:
         collected: List[UEMessage] = []

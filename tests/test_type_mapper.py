@@ -20,9 +20,19 @@ def _build_sample_model() -> model.ProtoFile:
             model.EnumValue(name="COLOR_RED", number=1),
             model.EnumValue(name="COLOR_GREEN", number=2),
         ],
+        options={
+            "unreal": {
+                "specifiers": ["Flags"],
+                "meta": {"DisplayName": "Color"},
+            }
+        },
     )
 
-    meta_message = model.Message(name="Meta", full_name=f"{package}.Meta")
+    meta_message = model.Message(
+        name="Meta",
+        full_name=f"{package}.Meta",
+        options={"unreal": {"blueprint_type": False}},
+    )
 
     attributes_message = model.Message(
         name="Attributes",
@@ -34,8 +44,20 @@ def _build_sample_model() -> model.ProtoFile:
                 cardinality=model.FieldCardinality.OPTIONAL,
                 kind=model.FieldKind.SCALAR,
                 scalar="string",
+                options={
+                    "unreal": {
+                        "category": "Profile",
+                        "meta": {"DisplayName": "Nickname"},
+                    }
+                },
             )
         ],
+        options={
+            "unreal": {
+                "struct_specifiers": ["Atomic"],
+                "meta": {"DisplayName": "Attributes"},
+            }
+        },
     )
 
     mood_enum = model.Enum(
@@ -45,6 +67,7 @@ def _build_sample_model() -> model.ProtoFile:
             model.EnumValue(name="MOOD_HAPPY", number=0),
             model.EnumValue(name="MOOD_SAD", number=1),
         ],
+        options={"unreal": {"blueprint_type": False}},
     )
 
     id_field = model.Field(
@@ -53,6 +76,14 @@ def _build_sample_model() -> model.ProtoFile:
         cardinality=model.FieldCardinality.OPTIONAL,
         kind=model.FieldKind.SCALAR,
         scalar="int32",
+        options={
+            "unreal": {
+                "specifiers": ["EditAnywhere"],
+                "category": "Identity",
+                "meta": {"ClampMin": 0},
+                "blueprint_read_only": True,
+            }
+        },
     )
 
     scores_field = model.Field(
@@ -61,6 +92,7 @@ def _build_sample_model() -> model.ProtoFile:
         cardinality=model.FieldCardinality.REPEATED,
         kind=model.FieldKind.SCALAR,
         scalar="float",
+        options={"unreal": {"blueprint_exposed": False}},
     )
 
     labels_entry = model.MapEntry(
@@ -78,6 +110,7 @@ def _build_sample_model() -> model.ProtoFile:
         cardinality=model.FieldCardinality.REPEATED,
         kind=model.FieldKind.MAP,
         map_entry=labels_entry,
+        options={"unreal": {"specifiers": ["VisibleAnywhere"]}},
     )
 
     color_field = model.Field(
@@ -87,6 +120,7 @@ def _build_sample_model() -> model.ProtoFile:
         kind=model.FieldKind.ENUM,
         type_name=f"{package}.Color",
         resolved_type=color_enum,
+        options={"unreal": {"category": "Appearance"}},
     )
 
     attributes_field = model.Field(
@@ -96,6 +130,11 @@ def _build_sample_model() -> model.ProtoFile:
         kind=model.FieldKind.MESSAGE,
         type_name=f"{package}.Person.Attributes",
         resolved_type=attributes_message,
+        options={
+            "unreal": {
+                "meta": {"DisplayName": "Attributes"},
+            }
+        },
     )
 
     email_field = model.Field(
@@ -106,6 +145,7 @@ def _build_sample_model() -> model.ProtoFile:
         scalar="string",
         oneof="contact",
         oneof_index=0,
+        options={"unreal": {"specifiers": ["EditAnywhere"]}},
     )
 
     phone_field = model.Field(
@@ -116,6 +156,12 @@ def _build_sample_model() -> model.ProtoFile:
         scalar="string",
         oneof="contact",
         oneof_index=0,
+        options={
+            "unreal": {
+                "specifiers": ["BlueprintGetter=GetPhone"],
+                "meta": {"DisplayName": "Phone"},
+            }
+        },
     )
 
     mood_field = model.Field(
@@ -125,6 +171,7 @@ def _build_sample_model() -> model.ProtoFile:
         kind=model.FieldKind.ENUM,
         type_name=f"{package}.Person.Mood",
         resolved_type=mood_enum,
+        options={"unreal": {"blueprint_exposed": False}},
     )
 
     contact_oneof = model.Oneof(
@@ -149,6 +196,13 @@ def _build_sample_model() -> model.ProtoFile:
         nested_messages=[attributes_message],
         nested_enums=[mood_enum],
         oneofs=[contact_oneof],
+        options={
+            "unreal": {
+                "struct_specifiers": ["Atomic"],
+                "meta": {"DisplayName": "Person"},
+                "category": "Characters",
+            }
+        },
     )
 
     proto_file = model.ProtoFile(
@@ -175,6 +229,10 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     person = ue_file.messages[0]
     assert isinstance(person, UEMessage)
     assert person.ue_name == "FPerson"
+    assert person.blueprint_type is True
+    assert person.struct_specifiers == ["Atomic"]
+    assert person.struct_metadata == {"DisplayName": "Person"}
+    assert person.category == "Characters"
     assert len(person.fields) == 8
 
     id_field = person.fields[0]
@@ -184,26 +242,35 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert id_field.ue_type == "TOptional<int32>"
     assert id_field.is_optional is True
     assert id_field.container == "TOptional"
+    assert id_field.blueprint_exposed is True
+    assert id_field.blueprint_read_only is True
+    assert id_field.uproperty_specifiers == ["EditAnywhere"]
+    assert id_field.category == "Identity"
+    assert id_field.uproperty_metadata == {"ClampMin": "0"}
 
     scores_field = person.fields[1]
     assert scores_field.ue_type == "TArray<float>"
     assert scores_field.base_type == "float"
     assert scores_field.is_repeated is True
     assert scores_field.container == "TArray"
+    assert scores_field.blueprint_exposed is False
 
     labels_field = person.fields[2]
     assert labels_field.is_map is True
     assert labels_field.ue_type == "TMap<FString, FMeta>"
     assert labels_field.map_key_type == "FString"
     assert labels_field.map_value_type == "FMeta"
+    assert labels_field.uproperty_specifiers == ["VisibleAnywhere"]
 
     color_field = person.fields[3]
     assert color_field.base_type == "EColor"
     assert color_field.ue_type == "TOptional<EColor>"
+    assert color_field.category == "Appearance"
 
     attributes_field = person.fields[4]
     assert attributes_field.base_type == "FPersonAttributes"
     assert attributes_field.ue_type == "TOptional<FPersonAttributes>"
+    assert attributes_field.uproperty_metadata == {"DisplayName": "Attributes"}
 
     email_field = person.fields[5]
     phone_field = person.fields[6]
@@ -212,10 +279,14 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert email_field.is_optional is False
     assert phone_field.is_optional is False
     assert email_field.ue_type == "FString"
+    assert email_field.uproperty_specifiers == ["EditAnywhere"]
+    assert phone_field.uproperty_specifiers == ["BlueprintGetter=GetPhone"]
+    assert phone_field.uproperty_metadata == {"DisplayName": "Phone"}
 
     mood_field = person.fields[7]
     assert mood_field.base_type == "EPersonMood"
     assert mood_field.ue_type == "TOptional<EPersonMood>"
+    assert mood_field.blueprint_exposed is False
 
     assert len(person.oneofs) == 1
 
@@ -227,16 +298,25 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
 
     assert len(person.nested_messages) == 1
     assert person.nested_messages[0].ue_name == "FPersonAttributes"
+    assert person.nested_messages[0].blueprint_type is True
+    assert person.nested_messages[0].struct_specifiers == ["Atomic"]
+    assert person.nested_messages[0].struct_metadata == {"DisplayName": "Attributes"}
+    assert person.nested_messages[0].fields[0].category == "Profile"
 
     assert len(person.nested_enums) == 1
     assert person.nested_enums[0].ue_name == "EPersonMood"
+    assert person.nested_enums[0].blueprint_type is False
 
     meta = ue_file.messages[1]
     assert meta.ue_name == "FMeta"
+    assert meta.blueprint_type is False
 
     color_enum = ue_file.enums[0]
     assert color_enum.ue_name == "EColor"
     assert [value.name for value in color_enum.values] == ["COLOR_RED", "COLOR_GREEN"]
+    assert color_enum.blueprint_type is True
+    assert color_enum.specifiers == ["Flags"]
+    assert color_enum.metadata == {"DisplayName": "Color"}
 
 
 def test_type_mapper_registers_imported_symbols_across_files() -> None:
