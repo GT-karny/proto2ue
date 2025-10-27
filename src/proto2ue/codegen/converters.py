@@ -62,6 +62,12 @@ class PythonConvertersRuntime:
 
         ctx = context or ConversionContext()
         message = self._messages[message_full_name]
+        # Match the behaviour of the generated C++ runtime which clears the
+        # output message before populating it to avoid leaking previous data
+        # when the same proto instance is reused.
+        clear = getattr(proto_instance, "Clear", None)
+        if callable(clear):
+            clear()
         self._encode_message(message, ue_value, proto_instance, ctx, field_path="")
         return proto_instance
 
