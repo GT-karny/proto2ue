@@ -10,6 +10,7 @@
 - `protoc` プラグインインターフェース (code generator request/response) と Unreal Build Tool との連携方法の調査。
 
 ### フェーズ2: アーキテクチャ設計
+- 詳細な設計ノートは [Phase 2 Architecture Design Notes](../docs/research/phase2-architecture.md) を参照。
 - ジェネレータのコンポーネント分割
   - Descriptor 解析層
   - UE 型へのマッピングレイヤ
