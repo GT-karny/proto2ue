@@ -539,6 +539,7 @@ class ConvertersTemplate:
         )
         lines.append("")
         lines.append('#include "CoreMinimal.h"')
+        lines.append('#include <string>')
         lines.append('#include "Kismet/BlueprintFunctionLibrary.h"')
         header_include = self._generated_header_name()
         lines.append(f'#include "{header_include}"')
@@ -685,6 +686,25 @@ class ConvertersTemplate:
         lines.append("const T& GetFieldValue(const T& Value) {")
         lines.append("    return Value;")
         lines.append("}")
+        lines.append("inline std::string ToProtoString(const FString& Value) {")
+        lines.append("    FTCHARToUTF8 Converter(*Value);")
+        lines.append("    return std::string(Converter.Get(), Converter.Length());")
+        lines.append("}")
+        lines.append("inline std::string ToProtoBytes(const TArray<uint8>& Value) {")
+        lines.append(
+            "    return std::string(reinterpret_cast<const char*>(Value.GetData()), Value.Num());"
+        )
+        lines.append("}")
+        lines.append("inline FString FromProtoString(const std::string& Value) {")
+        lines.append("    return FString(UTF8_TO_TCHAR(Value.c_str()));")
+        lines.append("}")
+        lines.append("inline TArray<uint8> FromProtoBytes(const std::string& Value) {")
+        lines.append("    TArray<uint8> Result;")
+        lines.append(
+            "    Result.Append(reinterpret_cast<const uint8*>(Value.data()), Value.size());"
+        )
+        lines.append("    return Result;")
+        lines.append("}")
         lines.append("}  // namespace Internal")
         return lines
 
@@ -718,23 +738,41 @@ class ConvertersTemplate:
                     lines.append(
                         f"    for (const auto& Kvp : Source.{field.name}) {{"
                     )
+                    key_expr = "Kvp.Key"
+                    proto_key_expr = self._to_proto_map_key(field, key_expr)
+                    if proto_key_expr != key_expr:
+                        key_var = f"ProtoKey_{field.name}"
+                        lines.append(
+                            f"        const auto {key_var} = {proto_key_expr};"
+                        )
+                        key_expr = key_var
                     lines.append(
-                        f"        auto& Added = {map_container}[Kvp.Key];"
+                        f"        auto& Added = {map_container}[{key_expr}];"
                     )
                     lines.append(
                         "        ToProto(Kvp.Value, Added, Context);"
                     )
                     lines.append("    }")
                 else:
-                    value_expr = "Kvp.Value"
-                    if map_entry.value_kind is model.FieldKind.ENUM:
-                        proto_type = self._qualified_proto_map_value_enum_type(field)
-                        value_expr = f"static_cast<{proto_type}>(Kvp.Value)"
                     lines.append(
                         f"    for (const auto& Kvp : Source.{field.name}) {{"
                     )
+                    key_expr = "Kvp.Key"
+                    proto_key_expr = self._to_proto_map_key(field, key_expr)
+                    if proto_key_expr != key_expr:
+                        key_var = f"ProtoKey_{field.name}"
+                        lines.append(
+                            f"        const auto {key_var} = {proto_key_expr};"
+                        )
+                        key_expr = key_var
+                    value_expr = "Kvp.Value"
+                    if map_entry.value_kind is model.FieldKind.ENUM:
+                        proto_type = self._qualified_proto_map_value_enum_type(field)
+                        value_expr = f"static_cast<{proto_type}>({value_expr})"
+                    else:
+                        value_expr = self._to_proto_map_value(field, value_expr)
                     lines.append(
-                        f"        {map_container}[Kvp.Key] = {value_expr};"
+                        f"        {map_container}[{key_expr}] = {value_expr};"
                     )
                     lines.append("    }")
             elif field.is_repeated:
@@ -754,6 +792,8 @@ class ConvertersTemplate:
                     if field.kind is model.FieldKind.ENUM:
                         proto_type = self._qualified_proto_enum_type(field)
                         item_expr = f"static_cast<{proto_type}>(Item)"
+                    else:
+                        item_expr = self._to_proto_value(field, item_expr)
                     lines.append(
                         f"    for (const auto& Item : Source.{field.name}) {{ Out.add_{field_name}({item_expr}); }}"
                     )
@@ -780,6 +820,8 @@ class ConvertersTemplate:
                 if field.kind is model.FieldKind.ENUM:
                     proto_type = self._qualified_proto_enum_type(field)
                     value_expr = f"static_cast<{proto_type}>({value_expr})"
+                else:
+                    value_expr = self._to_proto_value(field, value_expr)
                 assignment = f"Out.set_{field_name}({value_expr});"
                 lines.append(f"    if ({condition}) {{ {assignment} }}")
         lines.append("}")
@@ -833,6 +875,8 @@ class ConvertersTemplate:
             if field.kind is model.FieldKind.ENUM:
                 proto_type = self._qualified_proto_enum_type(field)
                 value_expr = f"static_cast<{proto_type}>({value_expr})"
+            else:
+                value_expr = self._to_proto_value(field, value_expr)
             lines.append(f"{indent}Out.set_{field_name}({value_expr});")
         return lines
 
@@ -862,6 +906,14 @@ class ConvertersTemplate:
                 lines.append(
                     f"    for (const auto& Kvp : Source.{field_name}()) {{"
                 )
+                key_expr = "Kvp.first"
+                proto_key_expr = self._from_proto_map_key(field, key_expr)
+                if proto_key_expr != key_expr:
+                    key_var = f"Key_{field.name}"
+                    lines.append(
+                        f"        const auto {key_var} = {proto_key_expr};"
+                    )
+                    key_expr = key_var
                 if map_entry.value_kind is model.FieldKind.MESSAGE:
                     value_type = field.map_value_type or "auto"
                     lines.append(
@@ -871,15 +923,17 @@ class ConvertersTemplate:
                         "        bOk = FromProto(Kvp.second, Value, Context) && bOk;"
                     )
                     lines.append(
-                        f"        Out.{field.name}.Add(Kvp.first, Value);"
+                        f"        Out.{field.name}.Add({key_expr}, Value);"
                     )
                 else:
                     value_expr = "Kvp.second"
                     if map_entry.value_kind is model.FieldKind.ENUM:
                         value_type = field.map_value_type or "auto"
-                        value_expr = f"static_cast<{value_type}>(Kvp.second)"
+                        value_expr = f"static_cast<{value_type}>({value_expr})"
+                    else:
+                        value_expr = self._from_proto_map_value(field, value_expr)
                     lines.append(
-                        f"        Out.{field.name}.Add(Kvp.first, {value_expr});"
+                        f"        Out.{field.name}.Add({key_expr}, {value_expr});"
                     )
                 lines.append("    }")
             elif field.is_repeated:
@@ -898,6 +952,8 @@ class ConvertersTemplate:
                     item_expr = "Item"
                     if field.kind is model.FieldKind.ENUM:
                         item_expr = f"static_cast<{field.base_type}>(Item)"
+                    else:
+                        item_expr = self._from_proto_value(field, item_expr)
                     lines.append(
                         f"    for (const auto& Item : Source.{field_name}()) {{ Out.{field.name}.Add({item_expr}); }}"
                     )
@@ -922,6 +978,8 @@ class ConvertersTemplate:
                     value_expr = f"Source.{field_name}()"
                     if field.kind is model.FieldKind.ENUM:
                         value_expr = f"static_cast<{field.base_type}>({value_expr})"
+                    else:
+                        value_expr = self._from_proto_value(field, value_expr)
                     lines.append(
                         f"    if (Source.has_{field_name}()) {{ Out.{field.name} = {value_expr}; }}"
                     )
@@ -929,6 +987,8 @@ class ConvertersTemplate:
                     value_expr = f"Source.{field_name}()"
                     if field.kind is model.FieldKind.ENUM:
                         value_expr = f"static_cast<{field.base_type}>({value_expr})"
+                    else:
+                        value_expr = self._from_proto_value(field, value_expr)
                     lines.append(f"    Out.{field.name} = {value_expr};")
         lines.append("    return bOk && (!Context || !Context->HasErrors());")
         lines.append("}")
@@ -970,6 +1030,8 @@ class ConvertersTemplate:
                 value_expr = f"Source.{field_name}()"
                 if field.kind is model.FieldKind.ENUM:
                     value_expr = f"static_cast<{field.base_type}>({value_expr})"
+                else:
+                    value_expr = self._from_proto_value(field, value_expr)
                 lines.append(
                     f"                Out.{field.name} = {value_expr};"
                 )
@@ -977,6 +1039,76 @@ class ConvertersTemplate:
         lines.append("        }")
         lines.append("    }")
         return lines
+
+    def _field_scalar_type(self, field: UEField) -> Optional[str]:
+        source = field.source
+        if source is None:
+            return None
+        if field.kind is model.FieldKind.SCALAR:
+            return source.scalar
+        return None
+
+    def _map_key_scalar_type(self, field: UEField) -> Optional[str]:
+        source = field.source
+        if source is None or source.map_entry is None:
+            return None
+        entry = source.map_entry
+        if entry.key_kind is model.FieldKind.SCALAR:
+            return entry.key_scalar
+        return None
+
+    def _map_value_scalar_type(self, field: UEField) -> Optional[str]:
+        source = field.source
+        if source is None or source.map_entry is None:
+            return None
+        entry = source.map_entry
+        if entry.value_kind is model.FieldKind.SCALAR:
+            return entry.value_scalar
+        return None
+
+    def _to_proto_value(self, field: UEField, value_expr: str) -> str:
+        scalar = self._field_scalar_type(field)
+        if scalar == "string":
+            return f"Internal::ToProtoString({value_expr})"
+        if scalar == "bytes":
+            return f"Internal::ToProtoBytes({value_expr})"
+        return value_expr
+
+    def _from_proto_value(self, field: UEField, value_expr: str) -> str:
+        scalar = self._field_scalar_type(field)
+        if scalar == "string":
+            return f"Internal::FromProtoString({value_expr})"
+        if scalar == "bytes":
+            return f"Internal::FromProtoBytes({value_expr})"
+        return value_expr
+
+    def _to_proto_map_key(self, field: UEField, key_expr: str) -> str:
+        scalar = self._map_key_scalar_type(field)
+        if scalar == "string":
+            return f"Internal::ToProtoString({key_expr})"
+        return key_expr
+
+    def _from_proto_map_key(self, field: UEField, key_expr: str) -> str:
+        scalar = self._map_key_scalar_type(field)
+        if scalar == "string":
+            return f"Internal::FromProtoString({key_expr})"
+        return key_expr
+
+    def _to_proto_map_value(self, field: UEField, value_expr: str) -> str:
+        scalar = self._map_value_scalar_type(field)
+        if scalar == "string":
+            return f"Internal::ToProtoString({value_expr})"
+        if scalar == "bytes":
+            return f"Internal::ToProtoBytes({value_expr})"
+        return value_expr
+
+    def _from_proto_map_value(self, field: UEField, value_expr: str) -> str:
+        scalar = self._map_value_scalar_type(field)
+        if scalar == "string":
+            return f"Internal::FromProtoString({value_expr})"
+        if scalar == "bytes":
+            return f"Internal::FromProtoBytes({value_expr})"
+        return value_expr
 
     def _to_pascal_case(self, value: str) -> str:
         parts = [part for part in value.split("_") if part]
