@@ -24,6 +24,7 @@
 - Unreal Engine の命名規則に合わせて `F`/`E` プレフィックス付きの型名を生成するマッピングレイヤ (`proto2ue.type_mapper`).
 - `optional` / `repeated` / `map` / `oneof` を含む複雑なフィールド構造を UE の `TOptional` / `TArray` / `TMap` / ラッパー構造へ変換する仕組み。
 - カスタムオプションを保持したまま中間表現へ転写できるように設計されたオプション正規化ロジック。
+- UE のパッケージ構造に合わせ、`UE_NAMESPACE_BEGIN` / `UE_NAMESPACE_END` マクロで名前空間をラップした C++ コードを生成。
 
 ## プロジェクトのゴール
 
