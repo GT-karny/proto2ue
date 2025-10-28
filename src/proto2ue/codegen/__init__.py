@@ -129,11 +129,18 @@ class DefaultTemplateRenderer:
                     continue
                 seen_wrapper_ids.add(wrapper_id)
                 unique_wrappers.append(wrapper)
+            deferred_wrappers: List[UEOptionalWrapper] = []
             for wrapper in unique_wrappers:
+                if wrapper.base_type == message.ue_name:
+                    deferred_wrappers.append(wrapper)
+                    continue
                 emit_wrapper(wrapper, current_message=message.ue_name)
 
             lines.extend(self._render_message(message, indent_level=len(namespace_stack)))
             rendered_messages.add(message.ue_name)
+
+            for wrapper in deferred_wrappers:
+                emit_wrapper(wrapper)
             if idx != len(messages) - 1:
                 lines.append("")
 
