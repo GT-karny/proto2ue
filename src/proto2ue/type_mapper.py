@@ -137,6 +137,22 @@ class TypeMapper:
         "sint64": "int64",
     }
 
+    _RESERVED_SYMBOLS = {
+        "FVector",
+        "FVector2D",
+        "FVector3d",
+        "FVector4",
+        "FVector4d",
+        "EVector",
+        "EVector2D",
+        "EVector3d",
+        "EVector4",
+        "EVector4d",
+        "EVectorState",
+    }
+
+    _COLLISION_INSERT = "Proto"
+
     def __init__(
         self,
         *,
@@ -210,9 +226,32 @@ class TypeMapper:
             self._register_message(nested_message)
 
     def _compose_type_name(self, prefix: str, full_name: str) -> str:
+        existing = self._symbol_table.get(full_name)
+        if existing is not None:
+            return existing.ue_name
         relative_path = self._relative_symbol_path(full_name)
         pascal_segments = [self._to_pascal_case(segment) for segment in relative_path]
-        return prefix + "".join(pascal_segments)
+        suffix = "".join(pascal_segments)
+        return self._make_unique_type_name(prefix, suffix)
+
+    def _make_unique_type_name(self, prefix: str, suffix: str) -> str:
+        candidate = prefix + suffix
+        if self._is_name_available(candidate):
+            return candidate
+
+        base_suffix = f"{self._COLLISION_INSERT}{suffix}" if suffix else self._COLLISION_INSERT
+        attempt = 1
+        while True:
+            adjusted_suffix = base_suffix if attempt == 1 else f"{base_suffix}{attempt - 1}"
+            candidate = prefix + adjusted_suffix
+            if self._is_name_available(candidate):
+                return candidate
+            attempt += 1
+
+    def _is_name_available(self, name: str) -> bool:
+        if name in self._RESERVED_SYMBOLS:
+            return False
+        return all(symbol.ue_name != name for symbol in self._symbol_table.values())
 
     def _relative_symbol_path(self, full_name: str) -> List[str]:
         if not full_name:
