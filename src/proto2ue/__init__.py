@@ -19,6 +19,7 @@ __all__ = [
     "UEMessage",
     "UEOneofCase",
     "UEOneofWrapper",
+    "UEOptionalWrapper",
     "UEProtoFile",
 ]
 
@@ -52,6 +53,7 @@ def __getattr__(name: str):
         "UEMessage",
         "UEOneofCase",
         "UEOneofWrapper",
+        "UEOptionalWrapper",
         "UEProtoFile",
     }:
         from .type_mapper import (
@@ -62,6 +64,7 @@ def __getattr__(name: str):
             UEMessage,
             UEOneofCase,
             UEOneofWrapper,
+            UEOptionalWrapper,
             UEProtoFile,
         )
 
@@ -73,6 +76,7 @@ def __getattr__(name: str):
             "UEMessage": UEMessage,
             "UEOneofCase": UEOneofCase,
             "UEOneofWrapper": UEOneofWrapper,
+            "UEOptionalWrapper": UEOptionalWrapper,
             "UEProtoFile": UEProtoFile,
         }
         return mapping[name]

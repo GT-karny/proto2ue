@@ -141,14 +141,23 @@ def test_python_runtime_round_trip() -> None:
     runtime = template.python_runtime()
 
     ue_input = {
-        "id": 42,
+        "id": {"bIsSet": True, "Value": 42},
         "scores": [1.0, 2.5],
-        "labels": {"team": {"created_by": "system"}},
-        "primary_color": 1,
-        "attributes": {"nickname": "Proto"},
-        "email": "",
-        "phone": None,
-        "mood": 1,
+        "labels": {
+            "team": {
+                "created_by": {"bIsSet": True, "Value": "system"},
+            }
+        },
+        "primary_color": {"bIsSet": True, "Value": 1},
+        "attributes": {
+            "bIsSet": True,
+            "Value": {
+                "nickname": {"bIsSet": True, "Value": "Proto"},
+            },
+        },
+        "email": {"bIsSet": True, "Value": ""},
+        "phone": {"bIsSet": False, "Value": None},
+        "mood": {"bIsSet": True, "Value": 1},
     }
 
     to_proto_context = ConversionContext()
@@ -164,8 +173,17 @@ def test_python_runtime_round_trip() -> None:
         "example.Person", proto_message, from_proto_context
     )
     assert not from_proto_context.has_errors()
-    assert ue_roundtrip["email"] == ""
-    assert ue_roundtrip["phone"] is None
+    assert ue_roundtrip["email"] == {"bIsSet": True, "Value": ""}
+    assert ue_roundtrip["phone"] == {"bIsSet": False, "Value": None}
+    assert ue_roundtrip["id"] == {"bIsSet": True, "Value": 42}
+    assert ue_roundtrip["mood"] == {"bIsSet": True, "Value": 1}
+    assert ue_roundtrip["attributes"] == {
+        "bIsSet": True,
+        "Value": {"nickname": {"bIsSet": True, "Value": "Proto"}},
+    }
+    assert ue_roundtrip["labels"]["team"] == {
+        "created_by": {"bIsSet": True, "Value": "system"}
+    }
 
     roundtrip_proto = runtime.to_proto(
         "example.Person", ue_roundtrip, person_cls(), ConversionContext()

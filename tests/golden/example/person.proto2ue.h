@@ -20,42 +20,84 @@ UE_NAMESPACE_BEGIN(example)
     };
 
     USTRUCT(BlueprintType)
-    struct FMeta {
+    struct FProtoOptionalExamplePersonFString {
         GENERATED_BODY()
-
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> created_by{};
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        FString Value{};
     };
 
     USTRUCT(BlueprintType)
-    struct FPerson {
+    struct FMeta {
         GENERATED_BODY()
-
         UPROPERTY(BlueprintReadWrite)
-        TOptional<int32> id{};
-        UPROPERTY(BlueprintReadWrite)
-        TArray<float> scores{};
-        UPROPERTY(BlueprintReadWrite)
-        TMap<FString, FMeta> labels{};
-        UPROPERTY(BlueprintReadWrite)
-        TOptional<EColor> primary_color{};
-        UPROPERTY(BlueprintReadWrite)
-        TOptional<FPersonAttributes> attributes{};
-        UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> email{};
-        UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> phone{};
-        UPROPERTY(BlueprintReadWrite)
-        TOptional<EPersonMood> mood{};
-        // oneof contact: email, phone
+        FProtoOptionalExamplePersonFString created_by{};
     };
 
     USTRUCT(BlueprintType)
     struct FPersonAttributes {
         GENERATED_BODY()
-
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> nickname{};
+        FProtoOptionalExamplePersonFString nickname{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalExamplePersonInt32 {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        int32 Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalExamplePersonEColor {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        EColor Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalExamplePersonFPersonAttributes {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        FPersonAttributes Value{};
+    };
+
+    USTRUCT()
+    struct FProtoOptionalExamplePersonEPersonMood {
+        GENERATED_BODY()
+        UPROPERTY()
+        bool bIsSet = false;
+        UPROPERTY()
+        EPersonMood Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FPerson {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalExamplePersonInt32 id{};
+        UPROPERTY(BlueprintReadWrite)
+        TArray<float> scores{};
+        UPROPERTY(BlueprintReadWrite)
+        TMap<FString, FMeta> labels{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalExamplePersonEColor primary_color{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalExamplePersonFPersonAttributes attributes{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalExamplePersonFString email{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalExamplePersonFString phone{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalExamplePersonEPersonMood mood{};
+        // oneof contact: email, phone
     };
 
 UE_NAMESPACE_END(example)

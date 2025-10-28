@@ -3,15 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Protocol
+from typing import Dict, Iterable, List, Optional, Protocol
 
-from ..type_mapper import UEEnum, UEField, UEMessage, UEProtoFile
-from .converters import (
-    ConversionContext,
-    ConversionError,
-    ConverterRenderResult,
-    ConvertersTemplate,
-    PythonConvertersRuntime,
+from ..type_mapper import (
+    UEEnum,
+    UEField,
+    UEMessage,
+    UEOptionalWrapper,
+    UEProtoFile,
 )
 
 
@@ -49,9 +48,7 @@ class DefaultTemplateRenderer:
         source_name = f"{base_name}{self._source_suffix}"
         registration_symbol = self._registration_symbol(base_name)
         header_content = self._render_header(header_name, ue_file)
-        source_content = self._render_source(
-            header_name, registration_symbol, ue_file
-        )
+        source_content = self._render_source(header_name, registration_symbol, ue_file)
         return [
             GeneratedFile(name=header_name, content=header_content),
             GeneratedFile(name=source_name, content=source_content),
@@ -89,10 +86,68 @@ class DefaultTemplateRenderer:
             lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
             lines.append("")
 
+        # fmt: off
+        optional_wrappers = self._collect_optional_wrappers(ue_file)
+        rendered_wrappers: set[int] = set()
+
+        messages = self._sorted_messages(ue_file)
+        message_names = {message.ue_name for message in messages}
+        rendered_messages: set[str] = set()
+
+        def emit_wrapper(
+            wrapper: UEOptionalWrapper, *, current_message: str | None = None
+        ) -> None:
+            wrapper_id = id(wrapper)
+            if wrapper_id in rendered_wrappers:
+                return
+            base_type = wrapper.base_type
+            if (
+                base_type in message_names
+                and base_type not in rendered_messages
+                and base_type != current_message
+            ):
+                raise RuntimeError(
+                    "Optional wrapper emitted before base message definition: "
+                    f"{wrapper.ue_name} depends on {base_type}"
+                )
+            lines.extend(
+                self._render_optional_wrapper(wrapper, indent_level=len(namespace_stack))
+            )
+            lines.append("")
+            rendered_wrappers.add(wrapper_id)
+
         for idx, message in enumerate(messages):
+            needed_wrappers: List[UEOptionalWrapper] = []
+            for field in message.fields:
+                if field.optional_wrapper is not None:
+                    needed_wrappers.append(field.optional_wrapper)
+            seen_wrapper_ids: set[int] = set()
+            unique_wrappers: List[UEOptionalWrapper] = []
+            for wrapper in needed_wrappers:
+                wrapper_id = id(wrapper)
+                if wrapper_id in seen_wrapper_ids:
+                    continue
+                seen_wrapper_ids.add(wrapper_id)
+                unique_wrappers.append(wrapper)
+            deferred_wrappers: List[UEOptionalWrapper] = []
+            for wrapper in unique_wrappers:
+                if wrapper.base_type == message.ue_name:
+                    deferred_wrappers.append(wrapper)
+                    continue
+                emit_wrapper(wrapper, current_message=message.ue_name)
+
             lines.extend(self._render_message(message, indent_level=len(namespace_stack)))
+            rendered_messages.add(message.ue_name)
+
+            for wrapper in deferred_wrappers:
+                emit_wrapper(wrapper)
             if idx != len(messages) - 1:
                 lines.append("")
+
+        for wrapper in optional_wrappers:
+            if id(wrapper) not in rendered_wrappers:
+                emit_wrapper(wrapper)
+        # fmt: on
 
         if namespace_stack:
             if has_types:
@@ -121,9 +176,7 @@ class DefaultTemplateRenderer:
 
         indent = self._indent_for_namespace(namespace_stack)
         lines.append(f"{indent}namespace proto2ue {{")
-        lines.append(
-            f"{indent}    void {registration_symbol}() {{}}"
-        )
+        lines.append(f"{indent}    void {registration_symbol}() {{}}")
         lines.append(f"{indent}}}  // namespace proto2ue")
 
         if namespace_stack:
@@ -131,6 +184,21 @@ class DefaultTemplateRenderer:
             lines.extend(self._end_ue_namespaces(namespace_stack))
 
         return "\n".join(lines) + "\n"
+
+    def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        if not namespace_stack:
+            return []
+        joined = "::".join(namespace_stack)
+        return [f"UE_NAMESPACE_BEGIN({joined})"]
+
+    def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        if not namespace_stack:
+            return []
+        joined = "::".join(namespace_stack)
+        return [f"UE_NAMESPACE_END({joined})"]
+
+    def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
+        return "    " * len(namespace_stack)
 
     def _render_enum(self, enum: UEEnum, *, indent_level: int) -> List[str]:
         indent = "    " * indent_level
@@ -148,6 +216,36 @@ class DefaultTemplateRenderer:
         lines.append(f"{indent}enum class {enum.ue_name} : int32 {{")
         for value in enum.values:
             lines.append(f"{indent}    {value.name} = {value.number},")
+        lines.append(f"{indent}}};")
+        return lines
+
+    def _render_optional_wrapper(
+        self, wrapper: UEOptionalWrapper, *, indent_level: int
+    ) -> List[str]:
+        indent = "    " * indent_level
+        lines: List[str] = []
+        struct_specifiers = self._format_macro_specifiers(
+            blueprint=wrapper.blueprint_type,
+            specifiers=[],
+            category=None,
+            metadata={},
+        )
+        if struct_specifiers:
+            lines.append(f"{indent}USTRUCT{struct_specifiers}")
+        else:
+            lines.append(f"{indent}USTRUCT()")
+        lines.append(f"{indent}struct {wrapper.ue_name} {{")
+        lines.append(f"{indent}    GENERATED_BODY()")
+        if wrapper.blueprint_type:
+            lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        else:
+            lines.append(f"{indent}    UPROPERTY()")
+        lines.append(f"{indent}    bool {wrapper.is_set_member} = false;")
+        if wrapper.value_blueprint_exposed:
+            lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        else:
+            lines.append(f"{indent}    UPROPERTY()")
+        lines.append(f"{indent}    {wrapper.base_type} {wrapper.value_member}{{}};")
         lines.append(f"{indent}}};")
         return lines
 
@@ -215,9 +313,7 @@ class DefaultTemplateRenderer:
                 for key, value in sorted(metadata_items.items())
             )
         if category and "Category" not in metadata_items:
-            meta_entries.append(
-                f'Category="{self._escape_metadata_value(category)}"'
-            )
+            meta_entries.append(f'Category="{self._escape_metadata_value(category)}"')
         if meta_entries:
             items.append(f"meta=({', '.join(meta_entries)})")
         if not items:
@@ -227,12 +323,14 @@ class DefaultTemplateRenderer:
     def _format_property_specifiers(self, field: UEField) -> str | None:
         items: List[str] = []
         if field.blueprint_exposed:
-            items.append("BlueprintReadOnly" if field.blueprint_read_only else "BlueprintReadWrite")
+            items.append(
+                "BlueprintReadOnly"
+                if field.blueprint_read_only
+                else "BlueprintReadWrite"
+            )
         items.extend(self._dedupe_preserve_order(field.uproperty_specifiers))
         if field.category:
-            items.append(
-                f'Category="{self._escape_metadata_value(field.category)}"'
-            )
+            items.append(f'Category="{self._escape_metadata_value(field.category)}"')
         if field.uproperty_metadata:
             meta_entries = [
                 f'{key}="{self._escape_metadata_value(value)}"'
@@ -277,6 +375,71 @@ class DefaultTemplateRenderer:
             visit(message)
         return collected
 
+    def _sorted_messages(self, ue_file: UEProtoFile) -> List[UEMessage]:
+        messages = self._collect_messages(ue_file)
+        if not messages:
+            return []
+
+        message_map = {message.ue_name: message for message in messages}
+        dependencies = {
+            message.ue_name: self._message_dependencies(message, message_map)
+            for message in messages
+        }
+
+        temp_mark: set[str] = set()
+        perm_mark: set[str] = set()
+        ordered: List[str] = []
+        has_cycle = False
+
+        def visit(name: str) -> None:
+            nonlocal has_cycle
+            if name in perm_mark or has_cycle:
+                return
+            if name in temp_mark:
+                has_cycle = True
+                return
+            temp_mark.add(name)
+            for dep in dependencies.get(name, []):
+                visit(dep)
+            temp_mark.remove(name)
+            perm_mark.add(name)
+            ordered.append(name)
+
+        for message in messages:
+            if message.ue_name not in perm_mark:
+                visit(message.ue_name)
+
+        if has_cycle:
+            return messages
+
+        return [message_map[name] for name in ordered if name in message_map]
+
+    def _message_dependencies(
+        self, message: UEMessage, message_map: Dict[str, UEMessage]
+    ) -> List[str]:
+        dependencies: List[str] = []
+
+        def record(candidate: Optional[str]) -> None:
+            if candidate and candidate in message_map and candidate != message.ue_name:
+                dependencies.append(candidate)
+
+        for field in message.fields:
+            for candidate in self._field_dependency_types(field):
+                record(candidate)
+
+        return self._dedupe_preserve_order(dependencies)
+
+    def _field_dependency_types(self, field: UEField) -> List[str]:
+        candidates: List[str] = []
+        candidates.append(field.base_type)
+        if field.map_key_type is not None:
+            candidates.append(field.map_key_type)
+        if field.map_value_type is not None:
+            candidates.append(field.map_value_type)
+        if field.optional_wrapper is not None:
+            candidates.append(field.optional_wrapper.base_type)
+        return [candidate for candidate in candidates if candidate]
+
     def _collect_enums(self, ue_file: UEProtoFile) -> List[UEEnum]:
         collected: List[UEEnum] = []
         collected.extend(ue_file.enums)
@@ -289,6 +452,11 @@ class DefaultTemplateRenderer:
         for message in ue_file.messages:
             visit(message)
         return collected
+
+    def _collect_optional_wrappers(
+        self, ue_file: UEProtoFile
+    ) -> List[UEOptionalWrapper]:
+        return list(ue_file.optional_wrappers)
 
     def _namespace_stack(self, package: str | None) -> List[str]:
         if not package:

@@ -125,3 +125,17 @@ protoc --version
 - UE プロジェクト向けのテンプレートは今後提供予定です。それまではチュートリアル内のコードスニペットを参考に手動でプロジェクトへ組み込むことを想定しています。
 
 不明点がある場合は Issue でご質問ください。ドキュメントは機能追加のタイミングで順次更新します。
+
+## Blueprint 向け optional ラッパー構造体
+
+`proto2ue` のコード生成では、`optional` フィールドをそのまま `TOptional` で表現するのではなく、Blueprint で安全に扱えるようラッパー構造体
+（`FProtoOptional<Type>`）を自動的に合成します。各構造体は次のメンバーを備えています。
+
+- `bool bIsSet` — フィールドが設定済みかどうかを示すフラグ。デフォルト値は `false` です。
+- `Type Value` — 実際の値を格納します。`Type` には `TypeMapper` が算出した UE 側の型名が入ります（例: `int32`, `FString`, `FPersonAttributes`）。
+
+同じ基底型に対して生成されるラッパーは 1 つのみで、ヘッダーファイルでは `USTRUCT(BlueprintType)` としてエクスポートされます。そのため Blueprint
+からも `bIsSet` と `Value` を直接参照・更新できます。フィールド宣言側では、従来の `TOptional<Type>` の代わりに合成された構造体を使用してください。
+
+カスタムの接頭辞を利用したい場合は、`TypeMapper(optional_wrapper="FMyOptional")` のように初期化することで `FMyOptional<Type>` という命名に切り替えられます。
+生成されるメンバー名（`bIsSet` / `Value`）は固定であり、Blueprint 上でのバインディングやシリアライズ処理もこのレイアウトを前提とします。
