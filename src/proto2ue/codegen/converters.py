@@ -615,6 +615,7 @@ class ConvertersTemplate:
             lines.append(f'#include "{include}"')
         lines.append("#include \"google/protobuf/message.h\"")
         lines.append("#include <cstring>")
+        lines.append("#include <string>")
         lines.append("#include <type_traits>")
         lines.append("#include <utility>")
         lines.append("")
@@ -643,8 +644,81 @@ class ConvertersTemplate:
 
         lines.append("}  // namespace Proto2UE::Converters")
         lines.append("")
-        lines.append("// Blueprint helpers are intentionally left as declarations only for game modules.")
+        lines.append("namespace {")
+        lines.append(
+            "FString FormatConversionErrors(const Proto2UE::Converters::FConversionContext& Context) {"
+        )
+        lines.append("    FString Combined;")
+        lines.append("    const auto& Errors = Context.GetErrors();")
+        lines.append("    for (const auto& ConversionError : Errors) {")
+        lines.append("        if (!Combined.IsEmpty()) {")
+        lines.append("            Combined += TEXT(\"; \");")
+        lines.append("        }")
+        lines.append("        if (!ConversionError.FieldPath.IsEmpty()) {")
+        lines.append("            Combined += ConversionError.FieldPath;")
+        lines.append("            Combined += TEXT(\": \");")
+        lines.append("        }")
+        lines.append("        Combined += ConversionError.Message;")
+        lines.append("    }")
+        lines.append("    if (Combined.IsEmpty()) {")
+        lines.append("        return FString(TEXT(\"Unknown conversion error.\"));")
+        lines.append("    }")
+        lines.append("    return Combined;")
+        lines.append("}")
+        lines.append("}  // namespace")
         lines.append("")
+        for message in self._ue_file.messages:
+            ue_type = self._qualified_ue_type(message)
+            proto_type = self._qualified_proto_type(message)
+            base_name = message.ue_name[1:] if message.ue_name.startswith("F") else message.ue_name
+            lines.append(
+                f"bool UProto2UEBlueprintLibrary::{base_name}ToProtoBytes(const {ue_type}& Source, TArray<uint8>& OutBytes, FString& Error) {{"
+            )
+            lines.append("    Proto2UE::Converters::FConversionContext Context;")
+            lines.append(f"    {proto_type} ProtoMessage;")
+            lines.append(
+                "    Proto2UE::Converters::ToProto(Source, ProtoMessage, &Context);"
+            )
+            lines.append("    if (Context.HasErrors()) {")
+            lines.append("        Error = FormatConversionErrors(Context);")
+            lines.append("        return false;")
+            lines.append("    }")
+            lines.append("    std::string Serialized;")
+            lines.append("    if (!ProtoMessage.SerializeToString(&Serialized)) {")
+            lines.append(
+                "        Error = TEXT(\"Failed to serialize protobuf message.\");"
+            )
+            lines.append("        return false;")
+            lines.append("    }")
+            lines.append(
+                "    OutBytes = Proto2UE::Converters::Internal::FromProtoBytes(Serialized);"
+            )
+            lines.append("    Error = FString();")
+            lines.append("    return true;")
+            lines.append("}")
+            lines.append("")
+            lines.append(
+                f"bool UProto2UEBlueprintLibrary::{base_name}FromProtoBytes(const TArray<uint8>& InBytes, {ue_type}& OutData, FString& Error) {{"
+            )
+            lines.append("    const std::string Serialized = Proto2UE::Converters::Internal::ToProtoBytes(InBytes);")
+            lines.append(f"    {proto_type} ProtoMessage;")
+            lines.append("    if (!ProtoMessage.ParseFromString(Serialized)) {")
+            lines.append(
+                "        Error = TEXT(\"Failed to parse protobuf bytes.\");"
+            )
+            lines.append("        return false;")
+            lines.append("    }")
+            lines.append("    Proto2UE::Converters::FConversionContext Context;")
+            lines.append(
+                "    if (!Proto2UE::Converters::FromProto(ProtoMessage, OutData, &Context)) {"
+            )
+            lines.append("        Error = FormatConversionErrors(Context);")
+            lines.append("        return false;")
+            lines.append("    }")
+            lines.append("    Error = FString();")
+            lines.append("    return true;")
+            lines.append("}")
+            lines.append("")
         return "\n".join(lines) + "\n"
 
     def _render_internal_namespace(self) -> List[str]:
