@@ -1,6 +1,6 @@
 # 利用者向けガイド
 
-このディレクトリでは、`proto2ue` を使って Protocol Buffers (proto2) のスキーマから Unreal Engine 向けコードを生成するための実務的な情報をまとめています。現時点では Descriptor 解析と Unreal Engine 型へのマッピングにフォーカスしており、今後のフェーズでコード生成や Unreal Build Tool (UBT) との統合手順を追加する予定です。
+このディレクトリでは、`proto2ue` を使って Protocol Buffers (proto2) のスキーマから Unreal Engine 向けコードを生成するための実務的な情報をまとめています。Descriptor 解析と Unreal Engine 型へのマッピングに加えて、`proto2ue.codegen` が出力するヘッダー／ソースのスケルトンを UE プロジェクトへ取り込むまでをカバーしています。今後は変換ヘルパーや Unreal Build Tool (UBT) との統合手順も追加する予定です。
 
 ## ドキュメント構成
 
@@ -9,9 +9,9 @@
   - 仮想環境の作成と依存パッケージのインストール
   - `proto2ue` プラグインの呼び出し確認
 - [基本ワークフロー・チュートリアル](tutorials/basic-workflow.md)
-  - シンプルな proto ファイルを用いた中間表現の確認手順
+  - シンプルな proto ファイルを用いた中間表現とコード生成結果の確認手順
   - Unreal Engine で扱いやすい命名規則へのマッピング解説
-  - 将来のコード生成ステップへの橋渡し
+  - 生成されたヘッダー／ソースの読み解きポイントと次のステップへの橋渡し
 
 ## ドキュメント更新の方針
 
