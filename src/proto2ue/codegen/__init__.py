@@ -202,12 +202,27 @@ class DefaultTemplateRenderer:
     ) -> List[str]:
         indent = "    " * indent_level
         lines: List[str] = []
-        lines.append(f"{indent}USTRUCT(BlueprintType)")
+        struct_specifiers = self._format_macro_specifiers(
+            blueprint=wrapper.blueprint_type,
+            specifiers=[],
+            category=None,
+            metadata={},
+        )
+        if struct_specifiers:
+            lines.append(f"{indent}USTRUCT{struct_specifiers}")
+        else:
+            lines.append(f"{indent}USTRUCT()")
         lines.append(f"{indent}struct {wrapper.ue_name} {{")
         lines.append(f"{indent}    GENERATED_BODY()")
-        lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        if wrapper.blueprint_type:
+            lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        else:
+            lines.append(f"{indent}    UPROPERTY()")
         lines.append(f"{indent}    bool {wrapper.is_set_member} = false;")
-        lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        if wrapper.value_blueprint_exposed:
+            lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        else:
+            lines.append(f"{indent}    UPROPERTY()")
         lines.append(f"{indent}    {wrapper.base_type} {wrapper.value_member}{{}};")
         lines.append(f"{indent}}};")
         return lines

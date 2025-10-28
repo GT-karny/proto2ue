@@ -69,12 +69,12 @@ namespace example {
         FPersonAttributes Value{};
     };
 
-    USTRUCT(BlueprintType)
+    USTRUCT()
     struct FProtoOptionalExamplePersonEPersonMood {
         GENERATED_BODY()
-        UPROPERTY(BlueprintReadWrite)
+        UPROPERTY()
         bool bIsSet = false;
-        UPROPERTY(BlueprintReadWrite)
+        UPROPERTY()
         EPersonMood Value{};
     };
 

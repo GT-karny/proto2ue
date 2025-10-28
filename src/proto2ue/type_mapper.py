@@ -127,6 +127,8 @@ class UEOptionalWrapper:
     ue_name: str
     is_set_member: str = "bIsSet"
     value_member: str = "Value"
+    blueprint_type: bool = True
+    value_blueprint_exposed: bool = True
 
 
 class TypeMapper:
@@ -385,7 +387,11 @@ class TypeMapper:
                 ue_type = f"{self._array_wrapper}<{base_type}>"
                 container = self._array_wrapper
             elif is_optional:
-                optional_wrapper = self._ensure_optional_wrapper(base_type)
+                value_blueprint_type = self._base_type_blueprint_enabled(field)
+                optional_wrapper = self._ensure_optional_wrapper(
+                    base_type,
+                    value_blueprint_type=value_blueprint_type,
+                )
                 ue_type = optional_wrapper.ue_name
                 container = optional_wrapper.ue_name
         
@@ -449,15 +455,34 @@ class TypeMapper:
         map_type = f"{self._map_wrapper}<{key_type}, {value_type}>"
         return map_type, key_type, value_type
 
-    def _ensure_optional_wrapper(self, base_type: str) -> UEOptionalWrapper:
+    def _ensure_optional_wrapper(
+        self, base_type: str, *, value_blueprint_type: bool
+    ) -> UEOptionalWrapper:
         wrapper = self._current_optional_wrappers.get(base_type)
         if wrapper is not None:
+            if not value_blueprint_type:
+                wrapper.blueprint_type = False
+                wrapper.value_blueprint_exposed = False
             return wrapper
 
         ue_name = self._compose_optional_wrapper_name(base_type)
-        wrapper = UEOptionalWrapper(base_type=base_type, ue_name=ue_name)
+        wrapper = UEOptionalWrapper(
+            base_type=base_type,
+            ue_name=ue_name,
+            blueprint_type=value_blueprint_type,
+            value_blueprint_exposed=value_blueprint_type,
+        )
         self._current_optional_wrappers[base_type] = wrapper
         return wrapper
+
+    def _base_type_blueprint_enabled(self, field: model.Field) -> bool:
+        if field.kind is model.FieldKind.MESSAGE and field.resolved_type is not None:
+            unreal_options = self._extract_unreal_options(field.resolved_type.options)
+            return self._as_bool(unreal_options.get("blueprint_type"), default=True)
+        if field.kind is model.FieldKind.ENUM and field.resolved_type is not None:
+            unreal_options = self._extract_unreal_options(field.resolved_type.options)
+            return self._as_bool(unreal_options.get("blueprint_type"), default=True)
+        return True
 
     def _compose_optional_wrapper_name(self, base_type: str) -> str:
         sanitized = re.sub(r"[^0-9A-Za-z_]", "_", base_type)

@@ -300,6 +300,8 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert mood_field.base_type == "EPersonMood"
     assert mood_field.ue_type == "FProtoOptionalSampleEPersonMood"
     assert mood_field.blueprint_exposed is False
+    assert isinstance(mood_field.optional_wrapper, UEOptionalWrapper)
+    assert mood_field.optional_wrapper.value_blueprint_exposed is False
 
     assert len(person.oneofs) == 1
 
@@ -339,6 +341,10 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     }
     assert optional_wrappers["int32"].ue_name == "FProtoOptionalSampleInt32"
     assert optional_wrappers["FString"].ue_name == "FProtoOptionalSampleFString"
+    assert optional_wrappers["int32"].blueprint_type is True
+    assert optional_wrappers["int32"].value_blueprint_exposed is True
+    assert optional_wrappers["EPersonMood"].blueprint_type is False
+    assert optional_wrappers["EPersonMood"].value_blueprint_exposed is False
 
     color_enum = ue_file.enums[0]
     assert color_enum.ue_name == "EColor"
