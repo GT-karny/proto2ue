@@ -100,5 +100,5 @@ UE_NAMESPACE_BEGIN(example)
         // oneof contact: email, phone
     };
 
-}  // namespace example
+UE_NAMESPACE_END(example)
 
