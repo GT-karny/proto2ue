@@ -52,7 +52,14 @@ pip install -r requirements.txt  # or pip install protobuf pytest
    pytest
    ```
 
-2. **`protoc` プラグインの登録** — `proto2ue.plugin` を実行するラッパースクリプトを作成します (例では `~/.local/bin` に配置)。
+2. **`proto2ue` を Python から参照可能にする** — `protoc` がローカルコピーの `proto2ue` を読み込めるようにします。開発環境であれば editable インストールするか、`PYTHONPATH` に `src/` を追加してください。
+
+   ```bash
+   pip install -e .
+   # もしくは: export PYTHONPATH="$(pwd)/src:${PYTHONPATH}"
+   ```
+
+3. **`protoc` プラグインの登録** — `proto2ue.plugin` を実行するラッパースクリプトを作成します (例では `~/.local/bin` に配置)。
 
    ```bash
    cat <<'SCRIPT' > ~/.local/bin/protoc-gen-ue
@@ -66,7 +73,7 @@ pip install -r requirements.txt  # or pip install protobuf pytest
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
-3. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`.proto2ue.converters.h/.cpp`) です。
+4. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`.proto2ue.converters.h/.cpp`) です。
 
    ```bash
    protoc \
@@ -77,7 +84,7 @@ pip install -r requirements.txt  # or pip install protobuf pytest
 
    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
 
-4. **Unreal Engine への統合** — `Intermediate/Proto2UE` 以下を UE プロジェクトに追加し、`Build.cs` から依存ライブラリ (`google::protobuf`) を解決します。詳細な手順は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
+5. **Unreal Engine への統合** — `Intermediate/Proto2UE` 以下を UE プロジェクトに追加し、`Build.cs` から依存ライブラリ (`google::protobuf`) を解決します。詳細な手順は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
 
 ## ドキュメント
 
