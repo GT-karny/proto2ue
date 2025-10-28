@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Protocol
 
-from ..type_mapper import UEEnum, UEField, UEMessage, UEProtoFile
+from ..type_mapper import (
+    UEEnum,
+    UEField,
+    UEMessage,
+    UEOptionalWrapper,
+    UEProtoFile,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +85,13 @@ class DefaultTemplateRenderer:
             lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
             lines.append("")
 
+        optional_wrappers = self._collect_optional_wrappers(ue_file)
+        for wrapper in optional_wrappers:
+            lines.extend(
+                self._render_optional_wrapper(wrapper, indent_level=len(namespace_stack))
+            )
+            lines.append("")
+
         messages = self._collect_messages(ue_file)
         for idx, message in enumerate(messages):
             lines.extend(self._render_message(message, indent_level=len(namespace_stack)))
@@ -146,6 +159,21 @@ class DefaultTemplateRenderer:
         lines.append(f"{indent}enum class {enum.ue_name} : int32 {{")
         for value in enum.values:
             lines.append(f"{indent}    {value.name} = {value.number},")
+        lines.append(f"{indent}}};")
+        return lines
+
+    def _render_optional_wrapper(
+        self, wrapper: UEOptionalWrapper, *, indent_level: int
+    ) -> List[str]:
+        indent = "    " * indent_level
+        lines: List[str] = []
+        lines.append(f"{indent}USTRUCT(BlueprintType)")
+        lines.append(f"{indent}struct {wrapper.ue_name} {{")
+        lines.append(f"{indent}    GENERATED_BODY()")
+        lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        lines.append(f"{indent}    bool {wrapper.is_set_member} = false;")
+        lines.append(f"{indent}    UPROPERTY(BlueprintReadWrite)")
+        lines.append(f"{indent}    {wrapper.base_type} {wrapper.value_member}{{}};")
         lines.append(f"{indent}}};")
         return lines
 
@@ -287,6 +315,11 @@ class DefaultTemplateRenderer:
         for message in ue_file.messages:
             visit(message)
         return collected
+
+    def _collect_optional_wrappers(
+        self, ue_file: UEProtoFile
+    ) -> List[UEOptionalWrapper]:
+        return list(ue_file.optional_wrappers)
 
     def _namespace_stack(self, package: str | None) -> List[str]:
         if not package:

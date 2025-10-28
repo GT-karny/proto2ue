@@ -59,6 +59,7 @@ class UEField:
     uproperty_metadata: Dict[str, str] = field(default_factory=dict)
     category: Optional[str] = None
     source: model.Field | None = None
+    optional_wrapper: "UEOptionalWrapper" | None = None
 
 
 @dataclass(slots=True)
@@ -107,6 +108,7 @@ class UEProtoFile:
     package: Optional[str]
     messages: List[UEMessage] = field(default_factory=list)
     enums: List[UEEnum] = field(default_factory=list)
+    optional_wrappers: List["UEOptionalWrapper"] = field(default_factory=list)
     source: model.ProtoFile | None = None
 
 
@@ -114,6 +116,16 @@ class UEProtoFile:
 class _UESymbol:
     kind: str
     ue_name: str
+
+
+@dataclass(slots=True)
+class UEOptionalWrapper:
+    """Represents an optional wrapper struct synthesized for optional fields."""
+
+    base_type: str
+    ue_name: str
+    is_set_member: str = "bIsSet"
+    value_member: str = "Value"
 
 
 class TypeMapper:
@@ -142,17 +154,18 @@ class TypeMapper:
         *,
         message_prefix: str = "F",
         enum_prefix: str = "E",
-        optional_wrapper: str = "TOptional",
+        optional_wrapper: str = "FProtoOptional",
         array_wrapper: str = "TArray",
         map_wrapper: str = "TMap",
     ) -> None:
         self._message_prefix = message_prefix
         self._enum_prefix = enum_prefix
-        self._optional_wrapper = optional_wrapper
+        self._optional_wrapper_prefix = optional_wrapper
         self._array_wrapper = array_wrapper
         self._map_wrapper = map_wrapper
         self._symbol_table: Dict[str, _UESymbol] = {}
         self._package: Optional[str] = None
+        self._current_optional_wrappers: Dict[str, UEOptionalWrapper] = {}
 
     def register_files(self, proto_files: Iterable[model.ProtoFile]) -> None:
         """Register symbols for the provided proto files."""
@@ -174,15 +187,23 @@ class TypeMapper:
 
         self.register_file(proto_file)
 
+        optional_wrappers: List[UEOptionalWrapper] = []
         with self._package_scope(proto_file.package):
-            messages = [self._convert_message(message) for message in proto_file.messages]
-            enums = [self._convert_enum(enum) for enum in proto_file.enums]
+            previous_wrappers = self._current_optional_wrappers
+            self._current_optional_wrappers = {}
+            try:
+                messages = [self._convert_message(message) for message in proto_file.messages]
+                enums = [self._convert_enum(enum) for enum in proto_file.enums]
+                optional_wrappers = list(self._current_optional_wrappers.values())
+            finally:
+                self._current_optional_wrappers = previous_wrappers
 
         return UEProtoFile(
             name=proto_file.name,
             package=proto_file.package,
             messages=messages,
             enums=enums,
+            optional_wrappers=optional_wrappers,
             source=proto_file,
         )
 
@@ -354,13 +375,15 @@ class TypeMapper:
             )
             container = None
             ue_type = base_type
+            optional_wrapper: UEOptionalWrapper | None = None
             if is_repeated:
                 ue_type = f"{self._array_wrapper}<{base_type}>"
                 container = self._array_wrapper
             elif is_optional:
-                ue_type = f"{self._optional_wrapper}<{base_type}>"
-                container = self._optional_wrapper
-
+                optional_wrapper = self._ensure_optional_wrapper(base_type)
+                ue_type = optional_wrapper.ue_name
+                container = optional_wrapper.ue_name
+        
         return UEField(
             name=field.name,
             number=field.number,
@@ -383,6 +406,7 @@ class TypeMapper:
             uproperty_metadata=uproperty_metadata,
             category=category,
             source=field,
+            optional_wrapper=optional_wrapper if is_optional else None,
         )
 
     def _base_type_for_field(self, field: model.Field) -> str:
@@ -419,6 +443,28 @@ class TypeMapper:
         )
         map_type = f"{self._map_wrapper}<{key_type}, {value_type}>"
         return map_type, key_type, value_type
+
+    def _ensure_optional_wrapper(self, base_type: str) -> UEOptionalWrapper:
+        wrapper = self._current_optional_wrappers.get(base_type)
+        if wrapper is not None:
+            return wrapper
+
+        ue_name = self._compose_optional_wrapper_name(base_type)
+        wrapper = UEOptionalWrapper(base_type=base_type, ue_name=ue_name)
+        self._current_optional_wrappers[base_type] = wrapper
+        return wrapper
+
+    def _compose_optional_wrapper_name(self, base_type: str) -> str:
+        sanitized = re.sub(r"[^0-9A-Za-z_]", "_", base_type)
+        sanitized = re.sub(r"_+", "_", sanitized).strip("_")
+        if not sanitized:
+            sanitized = "Value"
+        pascal = self._to_pascal_case(sanitized)
+        if not pascal:
+            pascal = "Value"
+        if pascal[0].isdigit():
+            pascal = f"_{pascal}"
+        return f"{self._optional_wrapper_prefix}{pascal}"
 
     def _map_entry_part_type(
         self,

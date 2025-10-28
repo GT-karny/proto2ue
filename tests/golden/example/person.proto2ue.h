@@ -20,42 +20,84 @@ namespace example {
     };
 
     USTRUCT(BlueprintType)
+    struct FProtoOptionalInt32 {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        int32 Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalEColor {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        EColor Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalFPersonAttributes {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        FPersonAttributes Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalEPersonMood {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        EPersonMood Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalFString {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        FString Value{};
+    };
+
+    USTRUCT(BlueprintType)
     struct FMeta {
         GENERATED_BODY()
-
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> created_by{};
+        FProtoOptionalFString created_by{};
     };
 
     USTRUCT(BlueprintType)
     struct FPerson {
         GENERATED_BODY()
-
         UPROPERTY(BlueprintReadWrite)
-        TOptional<int32> id{};
+        FProtoOptionalInt32 id{};
         UPROPERTY(BlueprintReadWrite)
         TArray<float> scores{};
         UPROPERTY(BlueprintReadWrite)
         TMap<FString, FMeta> labels{};
         UPROPERTY(BlueprintReadWrite)
-        TOptional<EColor> primary_color{};
+        FProtoOptionalEColor primary_color{};
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FPersonAttributes> attributes{};
+        FProtoOptionalFPersonAttributes attributes{};
         UPROPERTY(BlueprintReadWrite)
         FString email{};
         UPROPERTY(BlueprintReadWrite)
         FString phone{};
         UPROPERTY(BlueprintReadWrite)
-        TOptional<EPersonMood> mood{};
+        FProtoOptionalEPersonMood mood{};
         // oneof contact: email, phone
     };
 
     USTRUCT(BlueprintType)
     struct FPersonAttributes {
         GENERATED_BODY()
-
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> nickname{};
+        FProtoOptionalFString nickname{};
     };
 
 }  // namespace example
