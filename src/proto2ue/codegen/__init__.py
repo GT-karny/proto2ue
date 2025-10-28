@@ -167,18 +167,16 @@ class DefaultTemplateRenderer:
         return "\n".join(lines) + "\n"
 
     def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        lines: List[str] = []
-        for depth, namespace in enumerate(namespace_stack):
-            indent = "    " * depth
-            lines.append(f"{indent}UE_NAMESPACE_BEGIN({namespace})")
-        return lines
+        if not namespace_stack:
+            return []
+        joined = "::".join(namespace_stack)
+        return [f"UE_NAMESPACE_BEGIN({joined})"]
 
     def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        lines: List[str] = []
-        for depth, namespace in reversed(list(enumerate(namespace_stack))):
-            indent = "    " * depth
-            lines.append(f"{indent}UE_NAMESPACE_END({namespace})")
-        return lines
+        if not namespace_stack:
+            return []
+        joined = "::".join(namespace_stack)
+        return [f"UE_NAMESPACE_END({joined})"]
 
     def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
         return "    " * len(namespace_stack)
