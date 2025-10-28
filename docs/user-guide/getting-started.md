@@ -23,7 +23,7 @@ pip install protobuf pytest
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt  # または pip install protobuf pytest
+pip install protobuf pytest
 ```
 
 プロジェクトルートで `pytest` を実行し、DescriptorLoader・TypeMapper・コード生成・変換ランタイムのテストが通ることを確認します。

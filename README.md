@@ -41,7 +41,7 @@ Python 3.11 以上と `protobuf` が必要です。開発環境では追加で `
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -r requirements.txt  # or pip install protobuf pytest
+pip install protobuf pytest
 ```
 
 ## クイックスタート
