@@ -276,9 +276,12 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     phone_field = person.fields[6]
     assert email_field.oneof_group == "contact"
     assert phone_field.oneof_group == "contact"
-    assert email_field.is_optional is False
-    assert phone_field.is_optional is False
-    assert email_field.ue_type == "FString"
+    assert email_field.is_optional is True
+    assert phone_field.is_optional is True
+    assert email_field.ue_type == "TOptional<FString>"
+    assert email_field.container == "TOptional"
+    assert phone_field.ue_type == "TOptional<FString>"
+    assert phone_field.container == "TOptional"
     assert email_field.uproperty_specifiers == ["EditAnywhere"]
     assert phone_field.uproperty_specifiers == ["BlueprintGetter=GetPhone"]
     assert phone_field.uproperty_metadata == {"DisplayName": "Phone"}
