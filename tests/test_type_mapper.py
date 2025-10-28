@@ -289,9 +289,12 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     phone_field = person.fields[6]
     assert email_field.oneof_group == "contact"
     assert phone_field.oneof_group == "contact"
-    assert email_field.is_optional is False
-    assert phone_field.is_optional is False
-    assert email_field.ue_type == "FString"
+    assert email_field.is_optional is True
+    assert phone_field.is_optional is True
+    assert email_field.ue_type == "TOptional<FString>"
+    assert email_field.container == "TOptional"
+    assert phone_field.ue_type == "TOptional<FString>"
+    assert phone_field.container == "TOptional"
     assert email_field.uproperty_specifiers == ["EditAnywhere"]
     assert phone_field.uproperty_specifiers == ["BlueprintGetter=GetPhone"]
     assert phone_field.uproperty_metadata == {"DisplayName": "Phone"}
@@ -471,4 +474,64 @@ def test_optional_wrapper_names_include_proto_path_segments() -> None:
     assert first_wrapper.ue_name == "FProtoOptionalFooCommonFString"
     assert second_wrapper.ue_name == "FProtoOptionalBarCommonFString"
     assert first_wrapper.ue_name != second_wrapper.ue_name
+
+
+def test_type_mapper_avoids_unreal_reserved_names() -> None:
+    vector3d_message = model.Message(name="Vector3d", full_name="math.Vector3d")
+    vector2d_message = model.Message(name="Vector2D", full_name="math.Vector2D")
+    vector_state_enum = model.Enum(
+        name="VectorState",
+        full_name="math.VectorState",
+        values=[
+            model.EnumValue(name="VECTOR_STATE_UNKNOWN", number=0),
+            model.EnumValue(name="VECTOR_STATE_READY", number=1),
+        ],
+    )
+
+    vector_field = model.Field(
+        name="vector",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.MESSAGE,
+        type_name="math.Vector3d",
+        resolved_type=vector3d_message,
+    )
+
+    state_field = model.Field(
+        name="state",
+        number=2,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.ENUM,
+        type_name="math.VectorState",
+        resolved_type=vector_state_enum,
+    )
+
+    container_message = model.Message(
+        name="Container",
+        full_name="math.Container",
+        fields=[vector_field, state_field],
+    )
+
+    proto_file = model.ProtoFile(
+        name="math.proto",
+        package="math",
+        messages=[vector3d_message, vector2d_message, container_message],
+        enums=[vector_state_enum],
+    )
+
+    mapper = TypeMapper()
+    ue_file = mapper.map_file(proto_file)
+
+    message_names = {message.name: message.ue_name for message in ue_file.messages}
+
+    assert message_names["Vector3d"] == "FProtoVector3d"
+    assert message_names["Vector2D"] == "FProtoVector2D"
+
+    container = next(message for message in ue_file.messages if message.name == "Container")
+    assert container.fields[0].base_type == "FProtoVector3d"
+    assert container.fields[0].ue_type == "TOptional<FProtoVector3d>"
+    assert container.fields[1].base_type == "EProtoVectorState"
+    assert container.fields[1].ue_type == "TOptional<EProtoVectorState>"
+
+    assert ue_file.enums[0].ue_name == "EProtoVectorState"
 

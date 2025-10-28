@@ -1,21 +1,22 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
 pytest.importorskip("google.protobuf")
 
-from google.protobuf import descriptor_pb2
+from google.protobuf import descriptor_pb2, descriptor_pool, message_factory
 from google.protobuf.compiler import plugin_pb2
 
-from proto2ue.plugin import generate_code
+from proto2ue.codegen.converters import ConversionContext, ConvertersTemplate
+from proto2ue.descriptor_loader import DescriptorLoader
+from proto2ue.type_mapper import TypeMapper
 
 
-def _build_sample_request() -> plugin_pb2.CodeGeneratorRequest:
+def _build_sample_components():
     file_proto = descriptor_pb2.FileDescriptorProto()
     file_proto.name = "example/person.proto"
     file_proto.package = "example"
+    file_proto.syntax = "proto2"
 
     color_enum = file_proto.enum_type.add()
     color_enum.name = "Color"
@@ -33,7 +34,6 @@ def _build_sample_request() -> plugin_pb2.CodeGeneratorRequest:
     person_message = file_proto.message_type.add()
     person_message.name = "Person"
 
-    # Nested message: Attributes
     attributes_message = person_message.nested_type.add()
     attributes_message.name = "Attributes"
     attribute_field = attributes_message.field.add()
@@ -42,7 +42,6 @@ def _build_sample_request() -> plugin_pb2.CodeGeneratorRequest:
     attribute_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
     attribute_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
 
-    # Map entry message for labels map
     labels_entry = person_message.nested_type.add()
     labels_entry.name = "LabelsEntry"
     labels_entry.options.map_entry = True
@@ -58,13 +57,11 @@ def _build_sample_request() -> plugin_pb2.CodeGeneratorRequest:
     labels_value.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
     labels_value.type_name = ".example.Meta"
 
-    # Nested enum for mood
     mood_enum = person_message.enum_type.add()
     mood_enum.name = "Mood"
     mood_enum.value.add(name="MOOD_UNSPECIFIED", number=0)
     mood_enum.value.add(name="MOOD_HAPPY", number=1)
 
-    # Oneof declaration for contact
     contact_oneof = person_message.oneof_decl.add()
     contact_oneof.name = "contact"
 
@@ -125,30 +122,53 @@ def _build_sample_request() -> plugin_pb2.CodeGeneratorRequest:
     request = plugin_pb2.CodeGeneratorRequest()
     request.proto_file.append(file_proto)
     request.file_to_generate.append("example/person.proto")
-    return request
+
+    loader = DescriptorLoader(request)
+    loader.load()
+    type_mapper = TypeMapper()
+    ue_file = type_mapper.map_file(loader.get_file("example/person.proto"))
+
+    pool = descriptor_pool.DescriptorPool()
+    pool.Add(file_proto)
+    factory = message_factory.MessageFactory(pool)
+    person_cls = factory.GetPrototype(pool.FindMessageTypeByName("example.Person"))
+    return ue_file, person_cls
 
 
-def test_default_renderer_outputs_golden_files() -> None:
-    request = _build_sample_request()
-    response = generate_code(request)
+def test_python_runtime_round_trip() -> None:
+    ue_file, person_cls = _build_sample_components()
+    template = ConvertersTemplate(ue_file)
+    runtime = template.python_runtime()
 
-    files = {file.name: file.content for file in response.file}
-    assert set(files) == {
-        "example/person.proto2ue.h",
-        "example/person.proto2ue.cpp",
+    ue_input = {
+        "id": 42,
+        "scores": [1.0, 2.5],
+        "labels": {"team": {"created_by": "system"}},
+        "primary_color": 1,
+        "attributes": {"nickname": "Proto"},
+        "email": "",
+        "phone": None,
+        "mood": 1,
     }
 
-    header_output = files["example/person.proto2ue.h"]
-    source_output = files["example/person.proto2ue.cpp"]
+    to_proto_context = ConversionContext()
+    proto_message = runtime.to_proto(
+        "example.Person", ue_input, person_cls(), to_proto_context
+    )
+    assert not to_proto_context.has_errors()
+    assert proto_message.WhichOneof("contact") == "email"
+    assert proto_message.email == ""
 
-    assert "UE_NAMESPACE_BEGIN(example)" in header_output
-    assert "UE_NAMESPACE_END(example)" in header_output
-    assert "UE_NAMESPACE_BEGIN(example)" in source_output
-    assert "UE_NAMESPACE_END(example)" in source_output
+    from_proto_context = ConversionContext()
+    ue_roundtrip = runtime.from_proto(
+        "example.Person", proto_message, from_proto_context
+    )
+    assert not from_proto_context.has_errors()
+    assert ue_roundtrip["email"] == ""
+    assert ue_roundtrip["phone"] is None
 
-    golden_dir = Path(__file__).parent / "golden"
-    header_golden = (golden_dir / "example" / "person.proto2ue.h").read_text()
-    source_golden = (golden_dir / "example" / "person.proto2ue.cpp").read_text()
+    roundtrip_proto = runtime.to_proto(
+        "example.Person", ue_roundtrip, person_cls(), ConversionContext()
+    )
+    assert proto_message.SerializeToString() == roundtrip_proto.SerializeToString()
 
-    assert header_output == header_golden
-    assert source_output == source_golden

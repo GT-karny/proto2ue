@@ -72,11 +72,16 @@ class DefaultTemplateRenderer:
         lines.append("")
 
         namespace_stack = self._namespace_stack(ue_file.package)
-        lines.extend(self._begin_ue_namespaces(namespace_stack))
         if namespace_stack:
-            lines.append("")
+            lines.extend(self._begin_ue_namespaces(namespace_stack))
 
         enums = self._collect_enums(ue_file)
+        messages = self._collect_messages(ue_file)
+        has_types = bool(enums or messages)
+
+        if namespace_stack and has_types:
+            lines.append("")
+
         for enum in enums:
             lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
             lines.append("")
@@ -138,7 +143,8 @@ class DefaultTemplateRenderer:
         # fmt: on
 
         if namespace_stack:
-            lines.append("")
+            if has_types:
+                lines.append("")
             lines.extend(self._end_ue_namespaces(namespace_stack))
 
         return "\n".join(lines) + "\n"
@@ -157,8 +163,8 @@ class DefaultTemplateRenderer:
         lines.append("")
 
         namespace_stack = self._namespace_stack(ue_file.package)
-        lines.extend(self._begin_ue_namespaces(namespace_stack))
         if namespace_stack:
+            lines.extend(self._begin_ue_namespaces(namespace_stack))
             lines.append("")
 
         indent = self._indent_for_namespace(namespace_stack)
@@ -449,6 +455,17 @@ class DefaultTemplateRenderer:
         if not package:
             return []
         return package.split(".")
+
+    def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        return [f"UE_NAMESPACE_BEGIN({namespace})" for namespace in namespace_stack]
+
+    def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        return [
+            f"UE_NAMESPACE_END({namespace})" for namespace in reversed(namespace_stack)
+        ]
+
+    def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
+        return "    " * len(namespace_stack)
 
 
 __all__ = [

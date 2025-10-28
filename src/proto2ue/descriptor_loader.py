@@ -360,12 +360,23 @@ class DescriptorLoader:
         if options is None:
             normalized: OptionDict = {}
         else:
-            normalized = json_format.MessageToDict(
-                options, preserving_proto_field_name=True, including_default_value_fields=False
-            )
+            normalized = self._message_to_dict(options)
         if self._option_validator is not None:
             self._option_validator(context, normalized)
         return normalized
+
+    def _message_to_dict(self, message: Message) -> OptionDict:
+        """Convert a protobuf message to a dictionary handling protobuf version differences."""
+
+        kwargs = {
+            "preserving_proto_field_name": True,
+            "including_default_value_fields": False,
+        }
+        try:
+            return json_format.MessageToDict(message, **kwargs)
+        except TypeError:
+            kwargs.pop("including_default_value_fields")
+            return json_format.MessageToDict(message, **kwargs)
 
     def _resolve_type_references(self) -> None:
         for field, type_name in self._pending_field_resolutions:

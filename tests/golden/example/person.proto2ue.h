@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "example/person.proto2ue.generated.h"
 
-namespace example {
+UE_NAMESPACE_BEGIN(example)
 
     UENUM(BlueprintType)
     enum class EColor : int32 {
@@ -92,9 +92,9 @@ namespace example {
         UPROPERTY(BlueprintReadWrite)
         FProtoOptionalExamplePersonFPersonAttributes attributes{};
         UPROPERTY(BlueprintReadWrite)
-        FString email{};
+        TOptional<FString> email{};
         UPROPERTY(BlueprintReadWrite)
-        FString phone{};
+        TOptional<FString> phone{};
         UPROPERTY(BlueprintReadWrite)
         FProtoOptionalExamplePersonEPersonMood mood{};
         // oneof contact: email, phone
