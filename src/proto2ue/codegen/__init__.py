@@ -68,29 +68,29 @@ class DefaultTemplateRenderer:
         lines.append("")
 
         namespace_stack = self._namespace_stack(ue_file.package)
-        for depth, namespace in enumerate(namespace_stack):
-            indent = "    " * depth
-            lines.append(f"{indent}namespace {namespace} {{")
         if namespace_stack:
-            lines.append("")
+            lines.extend(self._begin_ue_namespaces(namespace_stack))
 
         enums = self._collect_enums(ue_file)
+        messages = self._collect_messages(ue_file)
+        has_types = bool(enums or messages)
+
+        if namespace_stack and has_types:
+            lines.append("")
+
         for enum in enums:
             lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
             lines.append("")
 
-        messages = self._collect_messages(ue_file)
         for idx, message in enumerate(messages):
             lines.extend(self._render_message(message, indent_level=len(namespace_stack)))
             if idx != len(messages) - 1:
                 lines.append("")
 
         if namespace_stack:
-            lines.append("")
-            for depth in reversed(range(len(namespace_stack))):
-                indent = "    " * depth
-                namespace = namespace_stack[depth]
-                lines.append(f"{indent}}}  // namespace {namespace}")
+            if has_types:
+                lines.append("")
+            lines.extend(self._end_ue_namespaces(namespace_stack))
 
         return "\n".join(lines) + "\n"
 
@@ -108,13 +108,11 @@ class DefaultTemplateRenderer:
         lines.append("")
 
         namespace_stack = self._namespace_stack(ue_file.package)
-        for depth, namespace in enumerate(namespace_stack):
-            indent = "    " * depth
-            lines.append(f"{indent}namespace {namespace} {{")
         if namespace_stack:
+            lines.extend(self._begin_ue_namespaces(namespace_stack))
             lines.append("")
 
-        indent = "    " * len(namespace_stack)
+        indent = self._indent_for_namespace(namespace_stack)
         lines.append(f"{indent}namespace proto2ue {{")
         lines.append(
             f"{indent}    void {registration_symbol}() {{}}"
@@ -123,10 +121,7 @@ class DefaultTemplateRenderer:
 
         if namespace_stack:
             lines.append("")
-            for depth in reversed(range(len(namespace_stack))):
-                indent = "    " * depth
-                namespace = namespace_stack[depth]
-                lines.append(f"{indent}}}  // namespace {namespace}")
+            lines.extend(self._end_ue_namespaces(namespace_stack))
 
         return "\n".join(lines) + "\n"
 
@@ -292,6 +287,17 @@ class DefaultTemplateRenderer:
         if not package:
             return []
         return package.split(".")
+
+    def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        return [f"UE_NAMESPACE_BEGIN({namespace})" for namespace in namespace_stack]
+
+    def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        return [
+            f"UE_NAMESPACE_END({namespace})" for namespace in reversed(namespace_stack)
+        ]
+
+    def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
+        return "    " * len(namespace_stack)
 
 
 __all__ = [

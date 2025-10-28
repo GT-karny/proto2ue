@@ -138,9 +138,17 @@ def test_default_renderer_outputs_golden_files() -> None:
         "example/person.proto2ue.cpp",
     }
 
+    header_output = files["example/person.proto2ue.h"]
+    source_output = files["example/person.proto2ue.cpp"]
+
+    assert "UE_NAMESPACE_BEGIN(example)" in header_output
+    assert "UE_NAMESPACE_END(example)" in header_output
+    assert "UE_NAMESPACE_BEGIN(example)" in source_output
+    assert "UE_NAMESPACE_END(example)" in source_output
+
     golden_dir = Path(__file__).parent / "golden"
     header_golden = (golden_dir / "example" / "person.proto2ue.h").read_text()
     source_golden = (golden_dir / "example" / "person.proto2ue.cpp").read_text()
 
-    assert files["example/person.proto2ue.h"] == header_golden
-    assert files["example/person.proto2ue.cpp"] == source_golden
+    assert header_output == header_golden
+    assert source_output == source_golden
