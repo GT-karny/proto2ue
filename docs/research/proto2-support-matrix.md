@@ -1,39 +1,36 @@
-# proto2 機能サポート調査
+# proto2 機能サポート状況 (2024-06 更新)
 
-## 対象機能一覧
+`DescriptorLoader` / `TypeMapper` / `DefaultTemplateRenderer` / `ConvertersTemplate` の実装を踏まえた最新ステータスです。優先度とテスト状況を併記します。
 
-| 機能 | 対応方針 | 説明 / メモ |
-| --- | --- | --- |
-| `optional` フィールド | **対応** | 未設定判定には `TOptional` または UE5.3 で導入された `FProto2Optional`（仮称）ラッパーを生成。既定値は Reflection 情報から初期化。 |
-| `required` フィールド | **対応** | UE 側では必須チェック API を生成 (`ValidateRequiredFields`)。未設定時はエディタ警告または `ensureMsgf`。 |
-| `repeated` フィールド | **対応** | `TArray` または `TArray<TSharedPtr<...>>`（メッセージ型の場合）で表現。`AddDefaulted` ヘルパーを提供。 |
-| `oneof` | **対応（高優先）** | `variant` 代替として `FProto2Oneof` 構造体を自動生成し、アクティブ分岐の `enum` と `TOptional` メンバーを持つ。未設定時の状態を `None` とする。 |
-| 入れ子型 | **対応** | 外側 `USTRUCT` 内に `USTRUCT()` をネスト。命名は `外側名_内側名` にキャメルケースで生成し、`GENERATED_BODY()` を各構造体に付与。 |
-| `enum` | **対応** | `UENUM(BlueprintType)` で生成。予約語衝突時は `_` サフィックスを付ける。未指定値 (`0`) への `MAX` 定義も生成。 |
-| `package` | **対応** | UE モジュール命名 (`Proto::<Package>::`) に基づき名前空間風の `namespace Proto2UE::<Package>` を生成し、`UHT` 互換の `UE_NAMESPACE_BEGIN` を利用。 |
-| `map<K,V>` | **対応（制約あり）** | UE5.3 の `TMap` を利用。キーは `string`/整数/enum のみを優先対応。浮動小数キーは未対応（`Proto` でも非推奨）。 |
-| `extensions` | **将来検討** | UE 側でランタイム差し込みが困難なため、非対応とし Warning を出す。 |
-| `group` | **非対応** | `group` は proto2 でも非推奨。検出時にエラー。 |
-| 予約語 | **対応** | `UHT` 予約語（`BlueprintType`, `Component`, `Texture` 等）を一覧化し、`Proto2` 接尾辞や `_Field` 接尾辞で回避。 |
-| `default` 値 | **対応** | UE 型に合わせたデフォルト初期化コードを生成。`optional` で明示指定時は `TOptional` を `IsSet=true` として初期化。 |
-| `json_name` | **部分対応** | JSON ブリッジ API を後続フェーズで検討。現時点では生成コードにメタデータとして保持。 |
-| `deprecated` | **対応** | `UE_DEPRECATED` マクロを付与し、Blueprint では `BlueprintReadOnly, meta=(DeprecatedFunction)` を追加。 |
+## 機能一覧
 
-## 優先度分類
+| 機能 | 対応状況 | 説明 / 備考 | 優先度 |
+| --- | --- | --- | --- |
+| `optional` フィールド | ✅ 実装済み | `FProtoOptional<File><Type>` 構造体を合成し、`bIsSet`/`Value` を Blueprint 公開。`ConvertersTemplate` で自動的にラップ／アンラップ。 | P0 |
+| `required` フィールド | ⚠️ 基本対応のみ | UE 側では通常のメンバーとして生成。必須チェックは未実装 (将来 `FConversionContext` で検証予定)。 | P0 |
+| `repeated` フィールド | ✅ 実装済み | `TArray<要素型>` に展開。Converters で `Add` / `Append` を行い、空配列は空の `TArray` を生成。 | P0 |
+| `oneof` | ⚠️ メタデータのみ | 中間表現でケース情報を保持しコメントを出力。Optional ラッパーにより選択状態を管理。専用ラッパー構造体は未生成。 | P0 |
+| 入れ子型 (message/enum) | ✅ 実装済み | 親メッセージ内にネストした `USTRUCT` / `UENUM` を生成し、命名はパッケージ相対パスを PasalCase 化。 | P0 |
+| `enum` | ✅ 実装済み | `UENUM(BlueprintType)` で `enum class` を生成。予約語衝突時は `Proto` を挿入。 | P0 |
+| `package` | ✅ 実装済み | `UE_NAMESPACE_BEGIN(package)` / `UE_NAMESPACE_END(package)` で名前空間化。 | P1 |
+| `map<K,V>` | ✅ 実装済み | `TMap<Key, Value>` に展開。キーは protobuf の制約に従いスカラ／enum をサポート。 | P1 |
+| 予約語回避 | ✅ 実装済み | UE の予約語テーブルを持ち、衝突時に `Proto` を挿入。 | P1 |
+| `default` 値 | ⚠️ 未マッピング | `DescriptorLoader` で値を保持するが、現在は生成コードに反映していない。Converters での初期化も未実装。 | P1 |
+| `json_name` | ⚠️ メタデータ保持 | `model.Field.json_name` に格納。生成コードでは未使用。 | P2 |
+| `deprecated` | ⚠️ 未対応 | 将来的に `UE_DEPRECATED` や Blueprint メタデータを付与予定。現状は情報のみ保持。 | P2 |
+| `extensions` | ❌ 非対応 | 解析段階で検出した場合はエラーを投げる (実装予定)。 | P3 |
+| `group` | ❌ 非対応 | proto2 でも非推奨。検出時にエラー予定 (未テスト)。 | P3 |
 
-- **P0**: `optional`, `required`, `repeated`, `enum`, 入れ子型, `oneof`
-- **P1**: `map`, `package`, 予約語回避, `default`
-- **P2**: `json_name`, `deprecated`
-- **P3**: `extensions`（警告のみ）, `group`（エラー）
+## テストカバレッジ
 
-## テストカバレッジ案
+- `tests/test_type_mapper.py` で Optional / Map / Repeated / Oneof / ネスト型のマッピングを検証。
+- `tests/test_codegen_renderer.py` で生成された `.proto2ue.h/.cpp` をゴールデン比較。
+- `tests/test_codegen_converters.py` で Python 版コンバーターのラウンドトリップ (`optional` + `oneof` + `map`) を実行。
+- `DescriptorLoader` の単体テストで `json_name` や `map_entry` の正規化を確認。
 
-1. `proto2ue/tests/golden/` にフェーズ1で洗い出した各ケースを配置。
-2. 生成コードの `UHT` 実行を CI に組み込み、`UnrealHeaderTool` がエラーを出さないことを確認。
-3. プロトタイプレベルで `optional`/`oneof` のアクティブ分岐をランタイム検証する自動テストを作成。
+## 今後の課題
 
-## リスクと課題
-
-- `oneof` の空状態と UE の `Blueprint` 表現の整合性。
-- `required` フィールド未設定時の挙動をどこで検証するか（生成コード vs ランタイム API）。
-- `extensions` 非対応に伴う既存 proto 資産との互換性評価。
+- `default` 値の初期化ロジックを Optional ラッパーと Converters 双方に反映する。
+- `deprecated` オプションから UE のメタデータ (`meta=(DeprecatedFunction)`) を自動付与。
+- `oneof` の選択状態を Blueprint から操作しやすくするためのラッパー生成 (UE5.3 の `FInstancedStruct` 活用を検討)。
+- `extensions` / `group` を検出した際のエラーメッセージとドキュメント整備。

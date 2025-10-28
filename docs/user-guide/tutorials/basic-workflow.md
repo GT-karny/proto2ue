@@ -1,212 +1,148 @@
 # 基本ワークフロー・チュートリアル
 
-このチュートリアルでは、`proto2ue` がどのように proto2 スキーマを解析し、Unreal Engine で扱いやすいデータ構造へマッピングしてヘッダー／ソースのスケルトンを生成するのかを段階的に確認します。中間表現の確認と合わせて、実際に出力される C++ コードの読み解き方も紹介します。
+このチュートリアルでは、`proto2ue` が proto2 スキーマをどのように解析し、Unreal Engine で扱いやすいデータ構造へマッピングしてヘッダー／ソースおよび変換ヘルパーを生成するのかを段階的に確認します。`getting-started.md` で作成した `examples/example/person.proto` を題材に、Python から内部モデルを確認しつつ、最終的な C++ 出力とコンバーターを読み解きます。
 
-## 1. サンプル proto の準備
+## 1. DescriptorLoader で中間表現を確認
 
-`inventory.proto` というファイルを作成し、次のようなメッセージと列挙型を定義します。
-
-```proto
-syntax = "proto2";
-
-package tutorial;
-
-enum ItemRarity {
-  COMMON = 0;
-  RARE = 1;
-  LEGENDARY = 2;
-}
-
-message ItemStat {
-  required string name = 1;
-  optional int32 value = 2;
-}
-
-message InventoryItem {
-  required string id = 1;
-  required ItemRarity rarity = 2;
-  optional string display_name = 3;
-  repeated ItemStat stats = 4;
-  map<string, string> metadata = 5;
-
-  oneof owner {
-    string player_id = 6;
-    string npc_id = 7;
-  }
-}
-```
-
-`proto2ue` は `map` フィールドを内部的にメッセージへ展開し、`oneof` に対しても UE 側で扱いやすいラッパー (将来の拡張) を生成できるようメタデータを付与します。
-
-## 2. Descriptor の解析
-
-リポジトリルートで以下のコマンドを実行し、`proto2ue` プラグインを通じて Descriptor が正しく処理されるか確認します。
-
-```bash
-export PYTHONPATH="$(pwd)/src:${PYTHONPATH}"
-
-cat <<'SCRIPT' > ./protoc-gen-proto2ue
-#!/usr/bin/env bash
-PYTHONPATH="${PYTHONPATH}" python -m proto2ue.plugin "$@"
-SCRIPT
-chmod +x ./protoc-gen-proto2ue
-
-protoc \
-  --plugin=protoc-gen-proto2ue="$(pwd)/protoc-gen-proto2ue" \
-  --proto2ue_out=/tmp/proto2ue-out \
-  --proto_path=. \
-  inventory.proto
-```
-
-`/tmp/proto2ue-out` には `inventory.proto2ue.h` と `inventory.proto2ue.cpp` が生成されます。以降のステップではこれらのファイルを参照します。
-
-## 3. TypeMapper を用いた名称・型の確認
-
-`TypeMapper` クラスは、Descriptor から得られた中間モデルを Unreal Engine 向けの表現 (`UEProtoFile`, `UEMessage`, `UEEnum` など) に変換します。以下のスクリプトを実行して結果をダンプしてみましょう。
+`DescriptorLoader` は `CodeGeneratorRequest` に含まれる `FileDescriptorProto` 群を `proto2ue.model` のデータクラスへ変換し、依存関係や `map_entry` を解決します。
 
 ```python
 from pathlib import Path
 from google.protobuf import descriptor_pb2
+from google.protobuf.compiler import plugin_pb2
+
 from proto2ue.descriptor_loader import DescriptorLoader
+
+# getting-started.md で生成した descriptor set を再利用します。
+descriptor_path = Path("Intermediate/Proto2UE/person.pb")
+descriptor_set = descriptor_pb2.FileDescriptorSet()
+descriptor_set.ParseFromString(descriptor_path.read_bytes())
+
+request = plugin_pb2.CodeGeneratorRequest()
+request.proto_file.extend(descriptor_set.file)
+request.file_to_generate.append("examples/example/person.proto")
+
+loader = DescriptorLoader(request)
+files = loader.load()
+person_file = files["examples/example/person.proto"]
+
+print(person_file.package)  # => "example"
+print([message.name for message in person_file.messages])  # => ["Meta", "Person"]
+print(person_file.messages[1].oneofs[0].fields[0].name)  # => "email"
+```
+
+ポイント:
+
+- `DescriptorLoader` は `map` フィールドを `MapEntry` として認識し、キー・値の型情報を保持します。
+- `oneof` の所属関係や `json_name`、`default_value`、`unreal.*` カスタムオプション (存在する場合) も `model.Field` に格納されます。
+
+## 2. TypeMapper で UE 向けの型に変換
+
+`TypeMapper` は `proto2ue.model` を Unreal Engine の命名規約と Blueprint メタデータに沿った `UEProtoFile` へ変換します。Optional フィールドや `oneof` メンバーは Blueprint 対応のラッパー構造体へと展開されます。
+
+```python
 from proto2ue.type_mapper import TypeMapper
 
-# descriptor_set.pb を生成
-import subprocess
-subprocess.run(
-    [
-        "protoc",
-        "--descriptor_set_out=descriptor_set.pb",
-        "--include_imports",
-        "--proto_path=.",
-        "inventory.proto",
-    ],
-    check=True,
-)
+type_mapper = TypeMapper()
+ue_file = type_mapper.map_file(person_file)
 
-request = descriptor_pb2.FileDescriptorSet()
-request.ParseFromString(Path("descriptor_set.pb").read_bytes())
-
-# protoc プラグインから渡される CodeGeneratorRequest を模倣
-codegen_request = descriptor_pb2.compiler.plugin_pb2.CodeGeneratorRequest()
-codegen_request.proto_file.extend(request.file)
-codegen_request.file_to_generate.append("inventory.proto")
-
-loader = DescriptorLoader(codegen_request)
-proto_file = loader.get_file("inventory.proto")
-
-mapper = TypeMapper()
-ue_file = mapper.map_file(proto_file)
+for enum in ue_file.enums:
+    print(enum.ue_name)  # => EColor
 
 for message in ue_file.messages:
-    print(f"Message: {message.ue_name}")
+    print(message.ue_name)  # => FMeta, FPerson など
     for field in message.fields:
-        attrs = []
-        if field.is_optional:
-            attrs.append("optional")
-        if field.is_repeated:
-            attrs.append("repeated")
-        if field.is_map:
-            attrs.append("map")
-        attrs_str = f" ({', '.join(attrs)})" if attrs else ""
-        print(f"  - {field.name} -> {field.ue_type}{attrs_str}")
-    if message.oneofs:
-        print("  Oneof groups:")
-        for oneof in message.oneofs:
-            print(f"    * {oneof.ue_name}")
-            for case in oneof.cases:
-                print(f"      - {case.field.name} -> {case.field.ue_type}")
+        print(f"  {field.name}: {field.ue_type}")
 ```
 
-実行結果の例:
+このサンプルでは以下のような変換が行われます。
 
-```
-Message: FInventoryItem
-  - id -> FString
-  - rarity -> ETutorialItemRarity
-  - display_name -> TOptional<FString> (optional)
-  - stats -> TArray<FItemStat> (repeated)
-  - metadata -> TMap<FString, FString> (map)
-  - player_id -> FString
-  - npc_id -> FString
-  Oneof groups:
-    * FInventoryItemOwnerOneof
-      - player_id -> FString
-      - npc_id -> FString
-Message: FItemStat
-  - name -> FString
-  - value -> TOptional<int32> (optional)
-```
+- `optional` フィールドと `oneof` メンバーは `FProtoOptional<ファイル名><型名>` 形式の USTRUCT として合成され、`BlueprintReadWrite`/`BlueprintReadOnly` が自動付与されます。
+- `repeated` フィールドは `TArray<...>`、`map` フィールドは `TMap<Key, Value>` に展開され、`container` プロパティで元のラッパーを参照できます。
+- メッセージ／列挙に `unreal` カスタムオプションが指定されている場合 (例: `unreal = { blueprint_type: false }`) は Blueprint メタデータやカテゴリが上書きされます。
 
-- `F` / `E` というプレフィックスは Unreal Engine のコーディング規約に合わせたものです。
-- `optional` フィールドは `TOptional` ラッパーで、`repeated` フィールドは `TArray` にマッピングされます。
-- `map<string, string>` は `TMap<FString, FString>` に展開され、キー・値の型は `TypeMapper` が自動決定します。
-- `oneof owner` は UE 用のラッパー構造 (`FInventoryItemOwnerOneof`) を生成する準備が整っており、各ケースが `UEOneofCase` に対応します。
+## 3. `DefaultTemplateRenderer` の出力を確認
 
-## 4. 生成された C++ コードを確認する
-
-`proto2ue.codegen.DefaultTemplateRenderer` は上記の中間表現から UE 向けヘッダー／ソースを作成します。`inventory.proto2ue.h` の抜粋は以下の通りです。
+`DefaultTemplateRenderer` は proto ファイルごとに `.proto2ue.h` / `.proto2ue.cpp` を生成します。`tests/golden/example/person.proto2ue.h` に出力済みのスケルトンがあり、以下のような特徴があります。
 
 ```cpp
-#pragma once
-
-// Generated by proto2ue. Source: inventory.proto
-
-#include "CoreMinimal.h"
-#include "inventory.proto2ue.generated.h"
-
-namespace tutorial {
-
-UENUM(BlueprintType)
-enum class ETutorialItemRarity : int32 {
-    COMMON = 0,
-    RARE = 1,
-    LEGENDARY = 2,
+USTRUCT(BlueprintType)
+struct FProtoOptionalExamplePersonFString {
+    GENERATED_BODY()
+    UPROPERTY(BlueprintReadWrite)
+    bool bIsSet = false;
+    UPROPERTY(BlueprintReadWrite)
+    FString Value{};
 };
 
 USTRUCT(BlueprintType)
-struct FItemStat {
+struct FPerson {
     GENERATED_BODY()
     UPROPERTY(BlueprintReadWrite)
-    FString name{};
+    FProtoOptionalExamplePersonInt32 id{};
     UPROPERTY(BlueprintReadWrite)
-    TOptional<int32> value{};
+    TArray<float> scores{};
+    UPROPERTY(BlueprintReadWrite)
+    TMap<FString, FMeta> labels{};
+    // ... 省略 ...
+    // oneof contact: email, phone
 };
-
-USTRUCT(BlueprintType)
-struct FInventoryItem {
-    GENERATED_BODY()
-    UPROPERTY(BlueprintReadWrite)
-    FString id{};
-    UPROPERTY(BlueprintReadWrite)
-    ETutorialItemRarity rarity{};
-    UPROPERTY(BlueprintReadWrite)
-    TOptional<FString> display_name{};
-    UPROPERTY(BlueprintReadWrite)
-    TArray<FItemStat> stats{};
-    UPROPERTY(BlueprintReadWrite)
-    TMap<FString, FString> metadata{};
-    UPROPERTY(BlueprintReadWrite)
-    FString player_id{};
-    UPROPERTY(BlueprintReadWrite)
-    FString npc_id{};
-    // oneof owner: player_id, npc_id
-};
-
-}  // namespace tutorial
 ```
 
-対応する `inventory.proto2ue.cpp` には、将来的にモジュール初期化と統合する `proto2ue::RegisterGeneratedTypes_inventory` スタブが出力されます。現段階では空実装ですが、生成ファイルを UE モジュールに組み込んだ際の登録フックとして利用する想定です。
+- Optional ラッパー構造体は Blueprint から直接編集可能な `bIsSet` / `Value` プロパティを持ちます。
+- `UE_NAMESPACE_BEGIN(example)` ブロックでパッケージ名がラップされ、`.cpp` 側では `RegisterGeneratedTypes` のスタブ関数が生成されます。
+- `oneof` のメンバーはコメントに列挙され、追加のヘルパー生成と組み合わせることで選択状態を管理できます。
 
-## 5. UE への組み込みを見据えたベストプラクティス
+## 4. `ConvertersTemplate` で変換ヘルパーを生成
 
-- **命名衝突の回避**: proto のパッケージ階層は UE 側の名前空間に変換されません。衝突が懸念される場合は `TypeMapper` のプレフィックス設定をカスタマイズする予定です。
-- **カスタムオプション**: `DescriptorLoader` はフィールド／メッセージ／列挙型のオプションを保持します。将来のコード生成で `BlueprintType` 等のメタデータにマップできるよう、proto 側の注釈を整備しておくとスムーズです。
-- **依存管理**: UE プロジェクトに統合する際は、`protoc` 実行時の `--proto_path` を Unreal Build Tool のヘッダー検索パスと同期させるとビルドトラブルを避けられます。
+`ConvertersTemplate` を利用すると、上記の UE 構造体と protobuf メッセージをシリアライズ／デシリアライズする C++ 関数群と Blueprint ライブラリを生成できます。Python 実装の `PythonConvertersRuntime` を使うと、C++ をビルドする前に変換ロジックを検証できます。
 
-## 6. 次のステップ
+```python
+from proto2ue.codegen.converters import ConvertersTemplate
 
-- 変換結果を検証する自動テストは `tests/` 以下のサンプルを参考に追加できます。
-- 生成コードのテンプレートが整備された際には、本チュートリアルを拡張して「ビルドできる UE モジュール」を導く予定です。
-- サンプル UE プロジェクトは今後公開予定のため、本チュートリアルではコードスニペットで代替しています。
+runtime = ConvertersTemplate(ue_file).python_runtime()
 
-フィードバックや改善提案があれば Issue / Pull Request でお知らせください。
+ue_value = {
+    "id": {"bIsSet": True, "Value": 42},
+    "scores": [1.0, 2.5],
+    "labels": {"team": {"created_by": {"bIsSet": True, "Value": "system"}}},
+    "primary_color": {"bIsSet": True, "Value": 1},
+    "attributes": {
+        "bIsSet": True,
+        "Value": {"nickname": {"bIsSet": True, "Value": "Proto"}},
+    },
+    "email": {"bIsSet": True, "Value": ""},
+    "phone": {"bIsSet": False, "Value": None},
+    "mood": {"bIsSet": True, "Value": 1},
+}
+
+from google.protobuf import descriptor_pool, message_factory
+pool = descriptor_pool.DescriptorPool()
+pool.AddSerializedFile(descriptor_path.read_bytes())
+person_cls = message_factory.MessageFactory(pool).GetPrototype(
+    pool.FindMessageTypeByName("example.Person")
+)
+
+proto_msg = runtime.to_proto("example.Person", ue_value, person_cls())
+roundtrip = runtime.from_proto("example.Person", proto_msg)
+assert roundtrip["email"] == {"bIsSet": True, "Value": ""}
+```
+
+生成される C++ 版では、`Proto2UE::Converters::ToProto` / `FromProto` と Blueprint から呼び出せる `UProto2UEBlueprintLibrary::<Name>ToProtoBytes` / `FromProtoBytes` が提供されます。変換中に発生したエラーは `FConversionContext` の `Errors` 配列に蓄積され、Blueprint 向けラッパーではまとめて文字列化して返します。
+
+## 5. Unreal オプションでメタデータをカスタマイズ
+
+proto 定義にカスタムオプション `[(unreal.field) = {...}]` や `[(unreal.message) = {...}]` を追加すると、生成される UE 型の Blueprint 属性やカテゴリを制御できます。たとえば `email` フィールドを Blueprint から読み取り専用にしたい場合は次のように定義します。
+
+```proto
+optional string email = 6 [(unreal.field) = {
+  blueprint_read_only: true,
+  category: "Networking/Contact"
+}];
+```
+
+TypeMapper は `blueprint_read_only`, `blueprint_exposed`, `specifiers`, `meta`, `category` を解釈し、`UPROPERTY` の引数やメタデータに反映します。詳細なオプション一覧は [`docs/research/ue-type-design.md`](../../research/ue-type-design.md) を参照してください。
+
+---
+
+このワークフローを UE プロジェクトに適用すると、proto スキーマを編集→`protoc` で生成→`ConvertersTemplate` で変換ヘルパーを更新→UE で再ビルド、というループを自動化できます。CI 上での実行例や Unreal Build Tool との統合案は [`docs/research/protoc-ubt-integration.md`](../../research/protoc-ubt-integration.md) を参照してください。
