@@ -146,7 +146,7 @@ def test_python_runtime_round_trip() -> None:
         "labels": {"team": {"created_by": "system"}},
         "primary_color": 1,
         "attributes": {"nickname": "Proto"},
-        "email": "person@example.com",
+        "email": "",
         "phone": None,
         "mood": 1,
     }
@@ -156,12 +156,16 @@ def test_python_runtime_round_trip() -> None:
         "example.Person", ue_input, person_cls(), to_proto_context
     )
     assert not to_proto_context.has_errors()
+    assert proto_message.WhichOneof("contact") == "email"
+    assert proto_message.email == ""
 
     from_proto_context = ConversionContext()
     ue_roundtrip = runtime.from_proto(
         "example.Person", proto_message, from_proto_context
     )
     assert not from_proto_context.has_errors()
+    assert ue_roundtrip["email"] == ""
+    assert ue_roundtrip["phone"] is None
 
     roundtrip_proto = runtime.to_proto(
         "example.Person", ue_roundtrip, person_cls(), ConversionContext()
