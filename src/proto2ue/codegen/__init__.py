@@ -48,9 +48,7 @@ class DefaultTemplateRenderer:
         source_name = f"{base_name}{self._source_suffix}"
         registration_symbol = self._registration_symbol(base_name)
         header_content = self._render_header(header_name, ue_file)
-        source_content = self._render_source(
-            header_name, registration_symbol, ue_file
-        )
+        source_content = self._render_source(header_name, registration_symbol, ue_file)
         return [
             GeneratedFile(name=header_name, content=header_content),
             GeneratedFile(name=source_name, content=source_content),
@@ -74,9 +72,7 @@ class DefaultTemplateRenderer:
         lines.append("")
 
         namespace_stack = self._namespace_stack(ue_file.package)
-        for depth, namespace in enumerate(namespace_stack):
-            indent = "    " * depth
-            lines.append(f"{indent}namespace {namespace} {{")
+        lines.extend(self._begin_ue_namespaces(namespace_stack))
         if namespace_stack:
             lines.append("")
 
@@ -85,6 +81,7 @@ class DefaultTemplateRenderer:
             lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
             lines.append("")
 
+        # fmt: off
         optional_wrappers = self._collect_optional_wrappers(ue_file)
         rendered_wrappers: set[int] = set()
 
@@ -132,13 +129,11 @@ class DefaultTemplateRenderer:
         for wrapper in optional_wrappers:
             if id(wrapper) not in rendered_wrappers:
                 emit_wrapper(wrapper)
+        # fmt: on
 
         if namespace_stack:
             lines.append("")
-            for depth in reversed(range(len(namespace_stack))):
-                indent = "    " * depth
-                namespace = namespace_stack[depth]
-                lines.append(f"{indent}}}  // namespace {namespace}")
+            lines.extend(self._end_ue_namespaces(namespace_stack))
 
         return "\n".join(lines) + "\n"
 
@@ -156,27 +151,37 @@ class DefaultTemplateRenderer:
         lines.append("")
 
         namespace_stack = self._namespace_stack(ue_file.package)
-        for depth, namespace in enumerate(namespace_stack):
-            indent = "    " * depth
-            lines.append(f"{indent}namespace {namespace} {{")
+        lines.extend(self._begin_ue_namespaces(namespace_stack))
         if namespace_stack:
             lines.append("")
 
-        indent = "    " * len(namespace_stack)
+        indent = self._indent_for_namespace(namespace_stack)
         lines.append(f"{indent}namespace proto2ue {{")
-        lines.append(
-            f"{indent}    void {registration_symbol}() {{}}"
-        )
+        lines.append(f"{indent}    void {registration_symbol}() {{}}")
         lines.append(f"{indent}}}  // namespace proto2ue")
 
         if namespace_stack:
             lines.append("")
-            for depth in reversed(range(len(namespace_stack))):
-                indent = "    " * depth
-                namespace = namespace_stack[depth]
-                lines.append(f"{indent}}}  // namespace {namespace}")
+            lines.extend(self._end_ue_namespaces(namespace_stack))
 
         return "\n".join(lines) + "\n"
+
+    def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        lines: List[str] = []
+        for depth, namespace in enumerate(namespace_stack):
+            indent = "    " * depth
+            lines.append(f"{indent}UE_NAMESPACE_BEGIN({namespace})")
+        return lines
+
+    def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
+        lines: List[str] = []
+        for depth, namespace in reversed(list(enumerate(namespace_stack))):
+            indent = "    " * depth
+            lines.append(f"{indent}UE_NAMESPACE_END({namespace})")
+        return lines
+
+    def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
+        return "    " * len(namespace_stack)
 
     def _render_enum(self, enum: UEEnum, *, indent_level: int) -> List[str]:
         indent = "    " * indent_level
@@ -291,9 +296,7 @@ class DefaultTemplateRenderer:
                 for key, value in sorted(metadata_items.items())
             )
         if category and "Category" not in metadata_items:
-            meta_entries.append(
-                f'Category="{self._escape_metadata_value(category)}"'
-            )
+            meta_entries.append(f'Category="{self._escape_metadata_value(category)}"')
         if meta_entries:
             items.append(f"meta=({', '.join(meta_entries)})")
         if not items:
@@ -303,12 +306,14 @@ class DefaultTemplateRenderer:
     def _format_property_specifiers(self, field: UEField) -> str | None:
         items: List[str] = []
         if field.blueprint_exposed:
-            items.append("BlueprintReadOnly" if field.blueprint_read_only else "BlueprintReadWrite")
+            items.append(
+                "BlueprintReadOnly"
+                if field.blueprint_read_only
+                else "BlueprintReadWrite"
+            )
         items.extend(self._dedupe_preserve_order(field.uproperty_specifiers))
         if field.category:
-            items.append(
-                f'Category="{self._escape_metadata_value(field.category)}"'
-            )
+            items.append(f'Category="{self._escape_metadata_value(field.category)}"')
         if field.uproperty_metadata:
             meta_entries = [
                 f'{key}="{self._escape_metadata_value(value)}"'
