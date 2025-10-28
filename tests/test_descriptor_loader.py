@@ -4,7 +4,7 @@ import pytest
 
 pytest.importorskip("google.protobuf")
 
-from google.protobuf import descriptor_pb2
+from google.protobuf import descriptor_pb2, json_format
 from google.protobuf.compiler import plugin_pb2
 
 from proto2ue.descriptor_loader import DescriptorLoader, OptionContext
@@ -148,3 +148,70 @@ def test_option_validator_receives_contexts() -> None:
     assert ("file", "example.pkg", None) in seen
     assert ("message", "example.pkg.Thing", None) in seen
     assert ("field", "example.pkg.Thing", "color") in seen
+
+
+def test_normalize_options_legacy_message_to_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+    loader = DescriptorLoader(request)
+    options = descriptor_pb2.FileOptions()
+    options.java_multiple_files = True
+
+    called: dict[str, object] = {}
+
+    def legacy_message_to_dict(
+        message: descriptor_pb2.FileOptions,
+        *,
+        preserving_proto_field_name: bool,
+        including_default_value_fields: bool,
+    ) -> dict[str, object]:
+        called["message"] = message
+        called["preserving_proto_field_name"] = preserving_proto_field_name
+        called["including_default_value_fields"] = including_default_value_fields
+        return {"javaMultipleFiles": True}
+
+    monkeypatch.setattr(json_format, "MessageToDict", legacy_message_to_dict)
+
+    normalized = loader._normalize_options(
+        options,
+        OptionContext(element_type="file", file_name="example.proto", full_name="example.pkg"),
+    )
+
+    assert normalized == {"javaMultipleFiles": True}
+    assert called == {
+        "message": options,
+        "preserving_proto_field_name": True,
+        "including_default_value_fields": False,
+    }
+
+
+def test_normalize_options_new_message_to_dict(monkeypatch: pytest.MonkeyPatch) -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+    loader = DescriptorLoader(request)
+    options = descriptor_pb2.FileOptions()
+    options.java_multiple_files = True
+
+    call_count = 0
+
+    def new_message_to_dict(
+        message: descriptor_pb2.FileOptions,
+        *,
+        preserving_proto_field_name: bool,
+        **kwargs: object,
+    ) -> dict[str, object]:
+        nonlocal call_count
+        call_count += 1
+        assert message is options
+        assert preserving_proto_field_name is True
+        if "including_default_value_fields" in kwargs:
+            raise TypeError("unexpected keyword argument")
+        return {"javaMultipleFiles": True}
+
+    monkeypatch.setattr(json_format, "MessageToDict", new_message_to_dict)
+
+    normalized = loader._normalize_options(
+        options,
+        OptionContext(element_type="file", file_name="example.proto", full_name="example.pkg"),
+    )
+
+    assert normalized == {"javaMultipleFiles": True}
+    assert call_count == 2
