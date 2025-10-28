@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .. import model
 from ..type_mapper import UEField, UEMessage, UEProtoFile
@@ -213,7 +213,7 @@ class PythonConvertersRuntime:
             provided = [
                 field
                 for field in group_fields
-                if self._is_value_provided(ue_value.get(field.name))
+                if self._is_value_provided(field, ue_value.get(field.name))
             ]
             if len(provided) > 1:
                 context.add_error(
@@ -230,11 +230,11 @@ class PythonConvertersRuntime:
             child_path = self._join_field_path(field_path, proto_field_name)
 
             if field.oneof_group:
-                if not self._is_value_provided(value):
+                if not self._is_value_provided(field, value):
                     # oneof unset, skip entirely
                     continue
             elif field.is_optional:
-                if not self._is_value_provided(value):
+                if not self._is_value_provided(field, value):
                     continue
             elif field.is_map:
                 value = value or {}
@@ -243,6 +243,11 @@ class PythonConvertersRuntime:
             else:
                 if value is None:
                     context.add_error(child_path, "Required field missing")
+                    continue
+
+            if field.is_optional:
+                provided, value = self._unwrap_optional_value(field, value, context, child_path)
+                if not provided:
                     continue
 
             if field.is_map:
@@ -363,9 +368,14 @@ class PythonConvertersRuntime:
                         child_path,
                         active=True,
                     )
+                    if field.is_optional:
+                        value = self._build_optional_output(field, True, value)
                     result[field.name] = value
                 else:
-                    result[field.name] = None
+                    if field.is_optional:
+                        result[field.name] = self._build_optional_output(field, False, None)
+                    else:
+                        result[field.name] = None
 
         for field in message.fields:
             if field.oneof_group:
@@ -379,16 +389,15 @@ class PythonConvertersRuntime:
                 result[field.name] = self._decode_repeated_field(
                     field, getattr(proto_instance, field.source.name), context, child_path
                 )
+            elif field.is_optional:
+                result[field.name] = self._decode_optional_field(
+                    field, proto_instance, context, child_path
+                )
             elif field.kind is model.FieldKind.MESSAGE:
                 if self._has_proto_field(proto_instance, field):
                     result[field.name] = self._decode_message_field(
                         field, getattr(proto_instance, field.source.name), context, child_path
                     )
-                else:
-                    result[field.name] = None
-            elif field.is_optional:
-                if self._has_proto_field(proto_instance, field):
-                    result[field.name] = getattr(proto_instance, field.source.name)
                 else:
                     result[field.name] = None
             else:
@@ -486,10 +495,66 @@ class PythonConvertersRuntime:
                 groups.setdefault(field.oneof_group, []).append(field)
         return groups
 
-    def _is_value_provided(self, value: Any) -> bool:
+    def _is_value_provided(self, field: UEField, value: Any) -> bool:
         if value is None:
             return False
+        if field.optional_wrapper is not None and isinstance(value, dict):
+            wrapper = field.optional_wrapper
+            return bool(value.get(wrapper.is_set_member))
         return True
+
+    def _unwrap_optional_value(
+        self,
+        field: UEField,
+        value: Any,
+        context: ConversionContext,
+        field_path: str,
+    ) -> Tuple[bool, Any]:
+        wrapper = field.optional_wrapper
+        if wrapper is None:
+            return True, value
+        if not isinstance(value, dict):
+            context.add_error(
+                field_path,
+                "Optional field expects a dictionary with wrapper members",
+            )
+            return False, None
+        is_set = bool(value.get(wrapper.is_set_member))
+        if not is_set:
+            return False, None
+        if wrapper.value_member not in value:
+            context.add_error(
+                field_path,
+                f"Optional wrapper missing '{wrapper.value_member}' member",
+            )
+            return False, None
+        return True, value.get(wrapper.value_member)
+
+    def _decode_optional_field(
+        self,
+        field: UEField,
+        proto_instance: Any,
+        context: ConversionContext,
+        field_path: str,
+    ) -> Any:
+        if self._has_proto_field(proto_instance, field):
+            if field.kind is model.FieldKind.MESSAGE:
+                decoded = self._decode_message_field(
+                    field, getattr(proto_instance, field.source.name), context, field_path
+                )
+            else:
+                decoded = getattr(proto_instance, field.source.name)
+            return self._build_optional_output(field, True, decoded)
+        return self._build_optional_output(field, False, None)
+
+    def _build_optional_output(self, field: UEField, is_set: bool, value: Any) -> Any:
+        wrapper = field.optional_wrapper
+        if wrapper is None:
+            return value if is_set else None
+        return {
+            wrapper.is_set_member: bool(is_set),
+            wrapper.value_member: value,
+        }
 
     def _join_field_path(self, parent: str, name: str) -> str:
         if not parent:
