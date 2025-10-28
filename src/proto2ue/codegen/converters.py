@@ -540,9 +540,13 @@ class ConvertersTemplate:
         lines.append("")
         lines.append('#include "CoreMinimal.h"')
         lines.append('#include <string>')
+        lines.append('#include <type_traits>')
+        lines.append('#include <utility>')
         lines.append('#include "Kismet/BlueprintFunctionLibrary.h"')
         header_include = self._generated_header_name()
         lines.append(f'#include "{header_include}"')
+        proto_header_include = self._proto_message_header_name()
+        lines.append(f'#include "{proto_header_include}"')
         for include in self._dependency_converter_includes():
             lines.append(f'#include "{include}"')
         lines.append("")
@@ -1171,6 +1175,10 @@ class ConvertersTemplate:
     def _generated_converters_header(self) -> str:
         base = self._base_name()
         return f"{base}.proto2ue.converters.h"
+
+    def _proto_message_header_name(self) -> str:
+        base = self._base_name()
+        return f"{base}.pb.h"
 
     def _dependency_converter_includes(self) -> List[str]:
         source = self._ue_file.source
