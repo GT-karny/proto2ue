@@ -614,7 +614,6 @@ class ConvertersTemplate:
         for include in self._dependency_converter_includes():
             lines.append(f'#include "{include}"')
         lines.append("#include \"google/protobuf/message.h\"")
-        lines.append("#include <cstring>")
         lines.append("#include <string>")
         lines.append("#include <type_traits>")
         lines.append("#include <utility>")
@@ -969,7 +968,9 @@ class ConvertersTemplate:
         lines.append("    bool bOk = true;")
         oneof_groups = self._group_oneof_fields(message.fields)
         for group_name, group_fields in oneof_groups.items():
-            lines.extend(self._render_from_proto_oneof_group(group_name, group_fields))
+            lines.extend(
+                self._render_from_proto_oneof_group(proto_type, group_name, group_fields)
+            )
         for field in message.fields:
             source = field.source
             if source is None:
@@ -1073,36 +1074,33 @@ class ConvertersTemplate:
         return lines
 
     def _render_from_proto_oneof_group(
-        self, group_name: str, fields: List[UEField]
+        self, proto_type: str, group_name: str, fields: List[UEField]
     ) -> List[str]:
         if not fields:
             return []
         lines: List[str] = []
         lines.append("    {")
-        lines.append(
-            f"        const char* ActiveCase = Source.WhichOneof(\"{group_name}\");"
-        )
-        lines.append("        if (ActiveCase != nullptr) {")
-        for index, field in enumerate(fields):
+        case_enum = f"{proto_type}::{self._to_pascal_case(group_name)}Case"
+        lines.append(f"        const auto ActiveCase = Source.{group_name}_case();")
+        lines.append("        switch (ActiveCase) {")
+        for field in fields:
             source = field.source
             if source is None:
                 continue
             field_name = source.name
-            prefix = "if" if index == 0 else "else if"
-            lines.append(
-                f"            {prefix} (std::strcmp(ActiveCase, \"{field_name}\") == 0) {{"
-            )
+            case_name = f"{case_enum}::k{self._to_pascal_case(field_name)}"
+            lines.append(f"        case {case_name}: {{")
             if field.kind is model.FieldKind.MESSAGE:
                 if field.is_optional:
                     lines.append(
-                        f"                auto& Dest = Out.{field.name}.Emplace();"
+                        f"            auto& Dest = Out.{field.name}.Emplace();"
                     )
                     lines.append(
-                        f"                bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
+                        f"            bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
                     )
                 else:
                     lines.append(
-                        f"                bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
+                        f"            bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
                     )
             else:
                 value_expr = f"Source.{field_name}()"
@@ -1111,9 +1109,12 @@ class ConvertersTemplate:
                 else:
                     value_expr = self._from_proto_value(field, value_expr)
                 lines.append(
-                    f"                Out.{field.name} = {value_expr};"
+                    f"            Out.{field.name} = {value_expr};"
                 )
-            lines.append("            }")
+            lines.append("            break;")
+            lines.append("        }")
+        lines.append("        default:")
+        lines.append("            break;")
         lines.append("        }")
         lines.append("    }")
         return lines
