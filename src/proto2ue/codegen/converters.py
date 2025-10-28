@@ -955,9 +955,17 @@ class ConvertersTemplate:
                 f"            {prefix} (std::strcmp(ActiveCase, \"{field_name}\") == 0) {{"
             )
             if field.kind is model.FieldKind.MESSAGE:
-                lines.append(
-                    f"                bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
-                )
+                if field.is_optional:
+                    lines.append(
+                        f"                auto& Dest = Out.{field.name}.Emplace();"
+                    )
+                    lines.append(
+                        f"                bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
+                    )
+                else:
+                    lines.append(
+                        f"                bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
+                    )
             else:
                 value_expr = f"Source.{field_name}()"
                 if field.kind is model.FieldKind.ENUM:

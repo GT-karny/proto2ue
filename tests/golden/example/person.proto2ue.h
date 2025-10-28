@@ -42,9 +42,9 @@ namespace example {
         UPROPERTY(BlueprintReadWrite)
         TOptional<FPersonAttributes> attributes{};
         UPROPERTY(BlueprintReadWrite)
-        FString email{};
+        TOptional<FString> email{};
         UPROPERTY(BlueprintReadWrite)
-        FString phone{};
+        TOptional<FString> phone{};
         UPROPERTY(BlueprintReadWrite)
         TOptional<EPersonMood> mood{};
         // oneof contact: email, phone

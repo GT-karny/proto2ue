@@ -336,6 +336,8 @@ class TypeMapper:
         uproperty_metadata = self._as_str_dict(unreal_options.get("meta"))
         category = self._as_optional_str(unreal_options.get("category"))
 
+        is_oneof_member = field.oneof is not None
+
         if field.kind is model.FieldKind.MAP:
             base_type, key_type, value_type = self._map_field_types(field)
             ue_type = base_type
@@ -349,17 +351,19 @@ class TypeMapper:
             key_type = None
             value_type = None
             is_repeated = field.cardinality is model.FieldCardinality.REPEATED
-            is_optional = (
-                field.cardinality is model.FieldCardinality.OPTIONAL and field.oneof is None
+            is_proto_optional = (
+                field.cardinality is model.FieldCardinality.OPTIONAL and not is_oneof_member
             )
+            wrap_with_optional = is_proto_optional or is_oneof_member
             container = None
             ue_type = base_type
             if is_repeated:
                 ue_type = f"{self._array_wrapper}<{base_type}>"
                 container = self._array_wrapper
-            elif is_optional:
+            elif wrap_with_optional:
                 ue_type = f"{self._optional_wrapper}<{base_type}>"
                 container = self._optional_wrapper
+            is_optional = wrap_with_optional
 
         return UEField(
             name=field.name,
