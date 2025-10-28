@@ -185,21 +185,6 @@ class DefaultTemplateRenderer:
 
         return "\n".join(lines) + "\n"
 
-    def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        if not namespace_stack:
-            return []
-        joined = "::".join(namespace_stack)
-        return [f"UE_NAMESPACE_BEGIN({joined})"]
-
-    def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        if not namespace_stack:
-            return []
-        joined = "::".join(namespace_stack)
-        return [f"UE_NAMESPACE_END({joined})"]
-
-    def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
-        return "    " * len(namespace_stack)
-
     def _render_enum(self, enum: UEEnum, *, indent_level: int) -> List[str]:
         indent = "    " * indent_level
         specifiers = self._format_macro_specifiers(
