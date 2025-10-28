@@ -547,6 +547,8 @@ class ConvertersTemplate:
         lines.append("")
         lines.append("namespace Proto2UE::Converters {")
         lines.append("")
+        lines.extend(self._render_internal_namespace())
+        lines.append("")
         lines.append("struct FConversionError { FString Message; FString FieldPath; };")
         lines.append("class FConversionContext {")
         lines.append("public:")
@@ -607,6 +609,9 @@ class ConvertersTemplate:
         for include in self._dependency_converter_includes():
             lines.append(f'#include "{include}"')
         lines.append("#include \"google/protobuf/message.h\"")
+        lines.append("#include <cstring>")
+        lines.append("#include <type_traits>")
+        lines.append("#include <utility>")
         lines.append("")
         lines.append("namespace Proto2UE::Converters {")
         lines.append("")
@@ -637,6 +642,55 @@ class ConvertersTemplate:
         lines.append("")
         return "\n".join(lines) + "\n"
 
+    def _render_internal_namespace(self) -> List[str]:
+        lines: List[str] = []
+        lines.append("namespace Internal {")
+        lines.append("template <typename, typename = void>")
+        lines.append("struct THasIsSet : std::false_type {};")
+        lines.append("template <typename T>")
+        lines.append(
+            "struct THasIsSet<T, std::void_t<decltype(std::declval<const T&>().IsSet())>> : std::true_type {};"
+        )
+        lines.append("template <typename, typename = void>")
+        lines.append("struct THasNum : std::false_type {};")
+        lines.append("template <typename T>")
+        lines.append(
+            "struct THasNum<T, std::void_t<decltype(std::declval<const T&>().Num())>> : std::true_type {};"
+        )
+        lines.append("template <typename, typename = void>")
+        lines.append("struct THasEquality : std::false_type {};")
+        lines.append("template <typename T>")
+        lines.append(
+            "struct THasEquality<T, std::void_t<decltype(std::declval<const T&>() == std::declval<const T&>())>> : std::true_type {};"
+        )
+        lines.append("template <typename T>")
+        lines.append("bool IsValueProvided(const T& Value) {")
+        lines.append("    if constexpr (THasIsSet<T>::value) {")
+        lines.append("        return Value.IsSet();")
+        lines.append("    } else if constexpr (THasNum<T>::value) {")
+        lines.append("        return Value.Num() > 0;")
+        lines.append("    } else if constexpr (std::is_enum_v<T>) {")
+        lines.append("        using Underlying = std::underlying_type_t<T>;")
+        lines.append("        return static_cast<Underlying>(Value) != Underlying{};")
+        lines.append("    } else if constexpr (std::is_arithmetic_v<T>) {")
+        lines.append("        return Value != T{};")
+        lines.append("    } else if constexpr (THasEquality<T>::value) {")
+        lines.append("        return !(Value == T{});")
+        lines.append("    } else {")
+        lines.append("        return true;")
+        lines.append("    }")
+        lines.append("}")
+        lines.append("template <typename T>")
+        lines.append("auto GetFieldValue(const T& Value) -> decltype(Value.GetValue()) {")
+        lines.append("    return Value.GetValue();")
+        lines.append("}")
+        lines.append("template <typename T>")
+        lines.append("const T& GetFieldValue(const T& Value) {")
+        lines.append("    return Value;")
+        lines.append("}")
+        lines.append("}  // namespace Internal")
+        return lines
+
     def _render_to_proto_function(
         self, message: UEMessage, ue_type: str, proto_type: str
     ) -> List[str]:
@@ -645,9 +699,14 @@ class ConvertersTemplate:
             f"void ToProto(const {ue_type}& Source, {proto_type}& Out, FConversionContext* Context) {{"
         )
         lines.append("    Out.Clear();")
+        oneof_groups = self._group_oneof_fields(message.fields)
+        for group_name, group_fields in oneof_groups.items():
+            lines.extend(self._render_to_proto_oneof_group(group_name, group_fields))
         for field in message.fields:
             source = field.source
             if source is None:
+                continue
+            if field.oneof_group:
                 continue
             field_name = source.name
             if field.is_map:
@@ -719,6 +778,53 @@ class ConvertersTemplate:
         lines.append("}")
         return lines
 
+    def _render_to_proto_oneof_group(
+        self, group_name: str, fields: List[UEField]
+    ) -> List[str]:
+        if not fields:
+            return []
+        lines: List[str] = []
+        guard_var = f"bHas{self._to_pascal_case(group_name)}Value"
+        lines.append("    {")
+        lines.append(f"        bool {guard_var} = false;")
+        lines.append(f"        const TCHAR* FieldPath = TEXT(\"{group_name}\");")
+        for field in fields:
+            source = field.source
+            if source is None:
+                continue
+            field_name = source.name
+            lines.append(
+                f"        if (Internal::IsValueProvided(Source.{field.name})) {{"
+            )
+            lines.append(f"            if ({guard_var}) {{")
+            lines.append("                if (Context) {")
+            lines.append(
+                "                    Context->AddError(FieldPath, TEXT(\"Multiple values provided for oneof\"));"
+            )
+            lines.append("                }")
+            lines.append("                continue;")
+            lines.append("            }")
+            lines.append(f"            {guard_var} = true;")
+            lines.extend(
+                self._render_to_proto_oneof_assignment(field, field_name, indent="            ")
+            )
+            lines.append("        }")
+        lines.append("    }")
+        return lines
+
+    def _render_to_proto_oneof_assignment(
+        self, field: UEField, field_name: str, *, indent: str
+    ) -> List[str]:
+        value_expr = f"Internal::GetFieldValue(Source.{field.name})"
+        lines = [f"{indent}const auto& ActiveValue = {value_expr};"]
+        if field.kind is model.FieldKind.MESSAGE:
+            lines.append(
+                f"{indent}ToProto(ActiveValue, *Out.mutable_{field_name}(), Context);"
+            )
+        else:
+            lines.append(f"{indent}Out.set_{field_name}(ActiveValue);")
+        return lines
+
     def _render_from_proto_function(
         self, message: UEMessage, ue_type: str, proto_type: str
     ) -> List[str]:
@@ -728,9 +834,14 @@ class ConvertersTemplate:
         )
         lines.append("    Out = {};")
         lines.append("    bool bOk = true;")
+        oneof_groups = self._group_oneof_fields(message.fields)
+        for group_name, group_fields in oneof_groups.items():
+            lines.extend(self._render_from_proto_oneof_group(group_name, group_fields))
         for field in message.fields:
             source = field.source
             if source is None:
+                continue
+            if field.oneof_group:
                 continue
             field_name = source.name
             if field.is_map:
@@ -795,6 +906,43 @@ class ConvertersTemplate:
         lines.append("    return bOk && (!Context || !Context->HasErrors());")
         lines.append("}")
         return lines
+
+    def _render_from_proto_oneof_group(
+        self, group_name: str, fields: List[UEField]
+    ) -> List[str]:
+        if not fields:
+            return []
+        lines: List[str] = []
+        lines.append("    {")
+        lines.append(
+            f"        const char* ActiveCase = Source.WhichOneof(\"{group_name}\");"
+        )
+        lines.append("        if (ActiveCase != nullptr) {")
+        for index, field in enumerate(fields):
+            source = field.source
+            if source is None:
+                continue
+            field_name = source.name
+            prefix = "if" if index == 0 else "else if"
+            lines.append(
+                f"            {prefix} (std::strcmp(ActiveCase, \"{field_name}\") == 0) {{"
+            )
+            if field.kind is model.FieldKind.MESSAGE:
+                lines.append(
+                    f"                bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
+                )
+            else:
+                lines.append(
+                    f"                Out.{field.name} = Source.{field_name}();"
+                )
+            lines.append("            }")
+        lines.append("        }")
+        lines.append("    }")
+        return lines
+
+    def _to_pascal_case(self, value: str) -> str:
+        parts = [part for part in value.split("_") if part]
+        return "".join(part[:1].upper() + part[1:] for part in parts) or value.title()
 
     def _collect_messages(self, messages: Iterable[UEMessage]) -> Iterable[UEMessage]:
         for message in messages:
