@@ -249,12 +249,12 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert isinstance(id_field, UEField)
     assert id_field.name == "id"
     assert id_field.base_type == "int32"
-    assert id_field.ue_type == "FProtoOptionalInt32"
+    assert id_field.ue_type == "FProtoOptionalSampleInt32"
     assert id_field.is_optional is True
-    assert id_field.container == "FProtoOptionalInt32"
+    assert id_field.container == "FProtoOptionalSampleInt32"
     assert isinstance(id_field.optional_wrapper, UEOptionalWrapper)
     assert id_field.optional_wrapper.base_type == "int32"
-    assert id_field.optional_wrapper.ue_name == "FProtoOptionalInt32"
+    assert id_field.optional_wrapper.ue_name == "FProtoOptionalSampleInt32"
     assert id_field.blueprint_exposed is True
     assert id_field.blueprint_read_only is True
     assert id_field.uproperty_specifiers == ["EditAnywhere"]
@@ -277,12 +277,12 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
 
     color_field = person.fields[3]
     assert color_field.base_type == "EColor"
-    assert color_field.ue_type == "FProtoOptionalEColor"
+    assert color_field.ue_type == "FProtoOptionalSampleEColor"
     assert color_field.category == "Appearance"
 
     attributes_field = person.fields[4]
     assert attributes_field.base_type == "FPersonAttributes"
-    assert attributes_field.ue_type == "FProtoOptionalFPersonAttributes"
+    assert attributes_field.ue_type == "FProtoOptionalSampleFPersonAttributes"
     assert attributes_field.uproperty_metadata == {"DisplayName": "Attributes"}
 
     email_field = person.fields[5]
@@ -298,7 +298,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
 
     mood_field = person.fields[7]
     assert mood_field.base_type == "EPersonMood"
-    assert mood_field.ue_type == "FProtoOptionalEPersonMood"
+    assert mood_field.ue_type == "FProtoOptionalSampleEPersonMood"
     assert mood_field.blueprint_exposed is False
 
     assert len(person.oneofs) == 1
@@ -316,7 +316,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert person.nested_messages[0].struct_metadata == {"DisplayName": "Attributes"}
     nickname_field = person.nested_messages[0].fields[0]
     assert nickname_field.category == "Profile"
-    assert nickname_field.ue_type == "FProtoOptionalFString"
+    assert nickname_field.ue_type == "FProtoOptionalSampleFString"
 
     assert len(person.nested_enums) == 1
     assert person.nested_enums[0].ue_name == "EPersonMood"
@@ -326,7 +326,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert meta.ue_name == "FMeta"
     assert meta.blueprint_type is False
     created_by_field = meta.fields[0]
-    assert created_by_field.ue_type == "FProtoOptionalFString"
+    assert created_by_field.ue_type == "FProtoOptionalSampleFString"
     assert isinstance(created_by_field.optional_wrapper, UEOptionalWrapper)
 
     optional_wrappers = {wrapper.base_type: wrapper for wrapper in ue_file.optional_wrappers}
@@ -337,8 +337,8 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
         "EPersonMood",
         "FString",
     }
-    assert optional_wrappers["int32"].ue_name == "FProtoOptionalInt32"
-    assert optional_wrappers["FString"].ue_name == "FProtoOptionalFString"
+    assert optional_wrappers["int32"].ue_name == "FProtoOptionalSampleInt32"
+    assert optional_wrappers["FString"].ue_name == "FProtoOptionalSampleFString"
 
     color_enum = ue_file.enums[0]
     assert color_enum.ue_name == "EColor"
@@ -406,11 +406,11 @@ def test_type_mapper_registers_imported_symbols_across_files() -> None:
     assert len(ue_file.messages) == 1
     ue_consumer = ue_file.messages[0]
     assert ue_consumer.fields[0].base_type == "FSharedMessage"
-    assert ue_consumer.fields[0].ue_type == "FProtoOptionalFSharedMessage"
+    assert ue_consumer.fields[0].ue_type == "FProtoOptionalConsumerFSharedMessage"
     assert isinstance(ue_consumer.fields[0].optional_wrapper, UEOptionalWrapper)
     assert ue_consumer.fields[0].optional_wrapper.base_type == "FSharedMessage"
     assert ue_consumer.fields[1].base_type == "ESharedState"
-    assert ue_consumer.fields[1].ue_type == "FProtoOptionalESharedState"
+    assert ue_consumer.fields[1].ue_type == "FProtoOptionalConsumerESharedState"
 
     wrappers = {wrapper.base_type: wrapper for wrapper in ue_file.optional_wrappers}
     assert set(wrappers) == {"FSharedMessage", "ESharedState"}

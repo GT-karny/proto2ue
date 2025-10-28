@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from dataclasses import dataclass, field
+import os
 import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
@@ -166,6 +167,7 @@ class TypeMapper:
         self._symbol_table: Dict[str, _UESymbol] = {}
         self._package: Optional[str] = None
         self._current_optional_wrappers: Dict[str, UEOptionalWrapper] = {}
+        self._current_file_suffix: Optional[str] = None
 
     def register_files(self, proto_files: Iterable[model.ProtoFile]) -> None:
         """Register symbols for the provided proto files."""
@@ -191,12 +193,15 @@ class TypeMapper:
         with self._package_scope(proto_file.package):
             previous_wrappers = self._current_optional_wrappers
             self._current_optional_wrappers = {}
+            previous_file_suffix = self._current_file_suffix
+            self._current_file_suffix = self._sanitize_file_identifier(proto_file.name)
             try:
                 messages = [self._convert_message(message) for message in proto_file.messages]
                 enums = [self._convert_enum(enum) for enum in proto_file.enums]
                 optional_wrappers = list(self._current_optional_wrappers.values())
             finally:
                 self._current_optional_wrappers = previous_wrappers
+                self._current_file_suffix = previous_file_suffix
 
         return UEProtoFile(
             name=proto_file.name,
@@ -464,7 +469,25 @@ class TypeMapper:
             pascal = "Value"
         if pascal[0].isdigit():
             pascal = f"_{pascal}"
+        file_suffix = self._current_file_suffix
+        if file_suffix:
+            return f"{self._optional_wrapper_prefix}{file_suffix}{pascal}"
         return f"{self._optional_wrapper_prefix}{pascal}"
+
+    def _sanitize_file_identifier(self, proto_name: str | None) -> Optional[str]:
+        if not proto_name:
+            return None
+        base = os.path.splitext(os.path.basename(proto_name))[0]
+        sanitized = re.sub(r"[^0-9A-Za-z_]", "_", base)
+        sanitized = re.sub(r"_+", "_", sanitized).strip("_")
+        if not sanitized:
+            sanitized = "File"
+        pascal = self._to_pascal_case(sanitized)
+        if not pascal:
+            pascal = "File"
+        if pascal[0].isdigit():
+            pascal = f"_{pascal}"
+        return pascal
 
     def _map_entry_part_type(
         self,

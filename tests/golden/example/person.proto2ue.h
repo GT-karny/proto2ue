@@ -20,43 +20,7 @@ namespace example {
     };
 
     USTRUCT(BlueprintType)
-    struct FProtoOptionalInt32 {
-        GENERATED_BODY()
-        UPROPERTY(BlueprintReadWrite)
-        bool bIsSet = false;
-        UPROPERTY(BlueprintReadWrite)
-        int32 Value{};
-    };
-
-    USTRUCT(BlueprintType)
-    struct FProtoOptionalEColor {
-        GENERATED_BODY()
-        UPROPERTY(BlueprintReadWrite)
-        bool bIsSet = false;
-        UPROPERTY(BlueprintReadWrite)
-        EColor Value{};
-    };
-
-    USTRUCT(BlueprintType)
-    struct FProtoOptionalFPersonAttributes {
-        GENERATED_BODY()
-        UPROPERTY(BlueprintReadWrite)
-        bool bIsSet = false;
-        UPROPERTY(BlueprintReadWrite)
-        FPersonAttributes Value{};
-    };
-
-    USTRUCT(BlueprintType)
-    struct FProtoOptionalEPersonMood {
-        GENERATED_BODY()
-        UPROPERTY(BlueprintReadWrite)
-        bool bIsSet = false;
-        UPROPERTY(BlueprintReadWrite)
-        EPersonMood Value{};
-    };
-
-    USTRUCT(BlueprintType)
-    struct FProtoOptionalFString {
+    struct FProtoOptionalPersonFString {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
         bool bIsSet = false;
@@ -68,36 +32,72 @@ namespace example {
     struct FMeta {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalFString created_by{};
-    };
-
-    USTRUCT(BlueprintType)
-    struct FPerson {
-        GENERATED_BODY()
-        UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalInt32 id{};
-        UPROPERTY(BlueprintReadWrite)
-        TArray<float> scores{};
-        UPROPERTY(BlueprintReadWrite)
-        TMap<FString, FMeta> labels{};
-        UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalEColor primary_color{};
-        UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalFPersonAttributes attributes{};
-        UPROPERTY(BlueprintReadWrite)
-        FString email{};
-        UPROPERTY(BlueprintReadWrite)
-        FString phone{};
-        UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalEPersonMood mood{};
-        // oneof contact: email, phone
+        FProtoOptionalPersonFString created_by{};
     };
 
     USTRUCT(BlueprintType)
     struct FPersonAttributes {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalFString nickname{};
+        FProtoOptionalPersonFString nickname{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalPersonInt32 {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        int32 Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalPersonEColor {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        EColor Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalPersonFPersonAttributes {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        FPersonAttributes Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FProtoOptionalPersonEPersonMood {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        bool bIsSet = false;
+        UPROPERTY(BlueprintReadWrite)
+        EPersonMood Value{};
+    };
+
+    USTRUCT(BlueprintType)
+    struct FPerson {
+        GENERATED_BODY()
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalPersonInt32 id{};
+        UPROPERTY(BlueprintReadWrite)
+        TArray<float> scores{};
+        UPROPERTY(BlueprintReadWrite)
+        TMap<FString, FMeta> labels{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalPersonEColor primary_color{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalPersonFPersonAttributes attributes{};
+        UPROPERTY(BlueprintReadWrite)
+        FString email{};
+        UPROPERTY(BlueprintReadWrite)
+        FString phone{};
+        UPROPERTY(BlueprintReadWrite)
+        FProtoOptionalPersonEPersonMood mood{};
+        // oneof contact: email, phone
     };
 
 }  // namespace example
