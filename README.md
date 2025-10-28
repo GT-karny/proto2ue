@@ -22,6 +22,7 @@
 
 - `CodeGeneratorRequest` からの Descriptor 解析と、依存関係を解決した中間モデル (`proto2ue.model`) の構築。
 - Unreal Engine の命名規則に合わせて `F`/`E` プレフィックス付きの型名を生成するマッピングレイヤ (`proto2ue.type_mapper`).
+- Unreal Engine 既存の `FVector` 系などと衝突する場合は、自動的に `FProtoVector` のようなフォールバック名へリネームする安全機構。
 - `optional` / `repeated` / `map` / `oneof` を含む複雑なフィールド構造を UE の `TOptional` / `TArray` / `TMap` / ラッパー構造へ変換する仕組み。
 - カスタムオプションを保持したまま中間表現へ転写できるように設計されたオプション正規化ロジック。
 - UE のパッケージ構造に合わせ、`UE_NAMESPACE_BEGIN` / `UE_NAMESPACE_END` マクロで名前空間をラップした C++ コードを生成。
