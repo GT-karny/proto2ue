@@ -422,12 +422,14 @@ class TypeMapper:
                 field.cardinality is model.FieldCardinality.OPTIONAL and not is_oneof_member
             )
             wrap_with_optional = is_proto_optional or is_oneof_member
+            is_optional = wrap_with_optional
             container = None
             ue_type = base_type
             optional_wrapper: UEOptionalWrapper | None = None
             if is_repeated:
                 ue_type = f"{self._array_wrapper}<{base_type}>"
                 container = self._array_wrapper
+                is_optional = False
             elif is_optional:
                 value_blueprint_type = self._base_type_blueprint_enabled(field)
                 optional_wrapper = self._ensure_optional_wrapper(
