@@ -291,10 +291,10 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert phone_field.oneof_group == "contact"
     assert email_field.is_optional is True
     assert phone_field.is_optional is True
-    assert email_field.ue_type == "TOptional<FString>"
-    assert email_field.container == "TOptional"
-    assert phone_field.ue_type == "TOptional<FString>"
-    assert phone_field.container == "TOptional"
+    assert email_field.ue_type == "FProtoOptionalSampleFString"
+    assert email_field.container == "FProtoOptionalSampleFString"
+    assert phone_field.ue_type == "FProtoOptionalSampleFString"
+    assert phone_field.container == "FProtoOptionalSampleFString"
     assert email_field.uproperty_specifiers == ["EditAnywhere"]
     assert phone_field.uproperty_specifiers == ["BlueprintGetter=GetPhone"]
     assert phone_field.uproperty_metadata == {"DisplayName": "Phone"}
@@ -529,9 +529,9 @@ def test_type_mapper_avoids_unreal_reserved_names() -> None:
 
     container = next(message for message in ue_file.messages if message.name == "Container")
     assert container.fields[0].base_type == "FProtoVector3d"
-    assert container.fields[0].ue_type == "TOptional<FProtoVector3d>"
+    assert container.fields[0].ue_type == "FProtoOptionalMathFProtoVector3d"
     assert container.fields[1].base_type == "EProtoVectorState"
-    assert container.fields[1].ue_type == "TOptional<EProtoVectorState>"
+    assert container.fields[1].ue_type == "FProtoOptionalMathEProtoVectorState"
 
     assert ue_file.enums[0].ue_name == "EProtoVectorState"
 

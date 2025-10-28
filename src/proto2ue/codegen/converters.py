@@ -730,6 +730,12 @@ class ConvertersTemplate:
             "struct THasIsSet<T, std::void_t<decltype(std::declval<const T&>().IsSet())>> : std::true_type {};"
         )
         lines.append("template <typename, typename = void>")
+        lines.append("struct THasIsSetMember : std::false_type {};")
+        lines.append("template <typename T>")
+        lines.append(
+            "struct THasIsSetMember<T, std::void_t<decltype(std::declval<const T&>().bIsSet)>> : std::true_type {};"
+        )
+        lines.append("template <typename, typename = void>")
         lines.append("struct THasNum : std::false_type {};")
         lines.append("template <typename T>")
         lines.append(
@@ -741,10 +747,24 @@ class ConvertersTemplate:
         lines.append(
             "struct THasEquality<T, std::void_t<decltype(std::declval<const T&>() == std::declval<const T&>())>> : std::true_type {};"
         )
+        lines.append("template <typename, typename = void>")
+        lines.append("struct THasGetValue : std::false_type {};")
+        lines.append("template <typename T>")
+        lines.append(
+            "struct THasGetValue<T, std::void_t<decltype(std::declval<const T&>().GetValue())>> : std::true_type {};"
+        )
+        lines.append("template <typename, typename = void>")
+        lines.append("struct THasValueMember : std::false_type {};")
+        lines.append("template <typename T>")
+        lines.append(
+            "struct THasValueMember<T, std::void_t<decltype(std::declval<const T&>().Value)>> : std::true_type {};"
+        )
         lines.append("template <typename T>")
         lines.append("bool IsValueProvided(const T& Value) {")
         lines.append("    if constexpr (THasIsSet<T>::value) {")
         lines.append("        return Value.IsSet();")
+        lines.append("    } else if constexpr (THasIsSetMember<T>::value) {")
+        lines.append("        return Value.bIsSet;")
         lines.append("    } else if constexpr (THasNum<T>::value) {")
         lines.append("        return Value.Num() > 0;")
         lines.append("    } else if constexpr (std::is_pointer_v<T>) {")
@@ -756,12 +776,14 @@ class ConvertersTemplate:
         lines.append("    }")
         lines.append("}")
         lines.append("template <typename T>")
-        lines.append("auto GetFieldValue(const T& Value) -> decltype(Value.GetValue()) {")
-        lines.append("    return Value.GetValue();")
-        lines.append("}")
-        lines.append("template <typename T>")
-        lines.append("const T& GetFieldValue(const T& Value) {")
-        lines.append("    return Value;")
+        lines.append("decltype(auto) GetFieldValue(const T& Value) {")
+        lines.append("    if constexpr (THasGetValue<T>::value) {")
+        lines.append("        return Value.GetValue();")
+        lines.append("    } else if constexpr (THasValueMember<T>::value) {")
+        lines.append("        return Value.Value;")
+        lines.append("    } else {")
+        lines.append("        return Value;")
+        lines.append("    }")
         lines.append("}")
         lines.append("inline std::string ToProtoString(const FString& Value) {")
         lines.append("    FTCHARToUTF8 Converter(*Value);")
@@ -877,10 +899,10 @@ class ConvertersTemplate:
             elif field.kind is model.FieldKind.MESSAGE:
                 if field.is_optional:
                     lines.append(
-                        f"    if (Source.{field.name}.IsSet()) {{"
+                        f"    if (Internal::IsValueProvided(Source.{field.name})) {{"
                     )
                     lines.append(
-                        f"        ToProto(Source.{field.name}.GetValue(), *Out.mutable_{field_name}(), Context);"
+                        f"        ToProto(Internal::GetFieldValue(Source.{field.name}), *Out.mutable_{field_name}(), Context);"
                     )
                     lines.append("    }")
                 else:
@@ -888,12 +910,16 @@ class ConvertersTemplate:
                         f"    ToProto(Source.{field.name}, *Out.mutable_{field_name}(), Context);"
                     )
             else:
-                condition = (
-                    f"Source.{field.name}.IsSet()" if field.is_optional else "true"
-                )
-                value_expr = (
-                    f"Source.{field.name}.GetValue()" if field.is_optional else f"Source.{field.name}"
-                )
+                if field.is_optional:
+                    condition = (
+                        f"Internal::IsValueProvided(Source.{field.name})"
+                    )
+                    value_expr = (
+                        f"Internal::GetFieldValue(Source.{field.name})"
+                    )
+                else:
+                    condition = "true"
+                    value_expr = f"Source.{field.name}"
                 if field.kind is model.FieldKind.ENUM:
                     proto_type = self._qualified_proto_enum_type(field)
                     value_expr = f"static_cast<{proto_type}>({value_expr})"
@@ -1041,12 +1067,27 @@ class ConvertersTemplate:
                     lines.append(
                         f"    if (Source.has_{field_name}()) {{"
                     )
-                    lines.append(
-                        f"        auto& Dest = Out.{field.name}.Emplace();"
-                    )
-                    lines.append(
-                        "        bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
-                    )
+                    wrapper = field.optional_wrapper
+                    if wrapper is None:
+                        lines.append(
+                            f"        auto& Dest = Out.{field.name}.Emplace();"
+                        )
+                        lines.append(
+                            "        bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
+                        )
+                    else:
+                        value_member = wrapper.value_member
+                        is_set_member = wrapper.is_set_member
+                        lines.append(
+                            f"        auto& Dest = Out.{field.name}.{value_member};"
+                        )
+                        lines.append("        Dest = {};")
+                        lines.append(
+                            f"        Out.{field.name}.{is_set_member} = true;"
+                        )
+                        lines.append(
+                            "        bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
+                        )
                     lines.append("    }")
                 else:
                     lines.append(
@@ -1059,9 +1100,22 @@ class ConvertersTemplate:
                         value_expr = f"static_cast<{field.base_type}>({value_expr})"
                     else:
                         value_expr = self._from_proto_value(field, value_expr)
-                    lines.append(
-                        f"    if (Source.has_{field_name}()) {{ Out.{field.name} = {value_expr}; }}"
-                    )
+                    wrapper = field.optional_wrapper
+                    if wrapper is None:
+                        lines.append(
+                            f"    if (Source.has_{field_name}()) {{ Out.{field.name} = {value_expr}; }}"
+                        )
+                    else:
+                        lines.append(
+                            f"    if (Source.has_{field_name}()) {{"
+                        )
+                        lines.append(
+                            f"        Out.{field.name}.{wrapper.value_member} = {value_expr};"
+                        )
+                        lines.append(
+                            f"        Out.{field.name}.{wrapper.is_set_member} = true;"
+                        )
+                        lines.append("    }")
                 else:
                     value_expr = f"Source.{field_name}()"
                     if field.kind is model.FieldKind.ENUM:
@@ -1092,12 +1146,27 @@ class ConvertersTemplate:
             lines.append(f"        case {case_name}: {{")
             if field.kind is model.FieldKind.MESSAGE:
                 if field.is_optional:
-                    lines.append(
-                        f"            auto& Dest = Out.{field.name}.Emplace();"
-                    )
-                    lines.append(
-                        f"            bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
-                    )
+                    wrapper = field.optional_wrapper
+                    if wrapper is None:
+                        lines.append(
+                            f"            auto& Dest = Out.{field.name}.Emplace();"
+                        )
+                        lines.append(
+                            f"            bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
+                        )
+                    else:
+                        value_member = wrapper.value_member
+                        is_set_member = wrapper.is_set_member
+                        lines.append(
+                            f"            auto& Dest = Out.{field.name}.{value_member};"
+                        )
+                        lines.append("            Dest = {};")
+                        lines.append(
+                            f"            Out.{field.name}.{is_set_member} = true;"
+                        )
+                        lines.append(
+                            f"            bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
+                        )
                 else:
                     lines.append(
                         f"            bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
@@ -1108,9 +1177,23 @@ class ConvertersTemplate:
                     value_expr = f"static_cast<{field.base_type}>({value_expr})"
                 else:
                     value_expr = self._from_proto_value(field, value_expr)
-                lines.append(
-                    f"            Out.{field.name} = {value_expr};"
-                )
+                if field.is_optional:
+                    wrapper = field.optional_wrapper
+                    if wrapper is None:
+                        lines.append(
+                            f"            Out.{field.name} = {value_expr};"
+                        )
+                    else:
+                        lines.append(
+                            f"            Out.{field.name}.{wrapper.value_member} = {value_expr};"
+                        )
+                        lines.append(
+                            f"            Out.{field.name}.{wrapper.is_set_member} = true;"
+                        )
+                else:
+                    lines.append(
+                        f"            Out.{field.name} = {value_expr};"
+                    )
             lines.append("            break;")
             lines.append("        }")
         lines.append("        default:")
