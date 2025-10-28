@@ -36,6 +36,7 @@
 - Python 3.11 以上
 - `protoc` (Protocol Buffers Compiler) 3.21 以上
 - Python パッケージ: `protobuf`, `pytest` (テスト実行時)
+  - `json_format.MessageToDict` のシグネチャ変更が入った protobuf 4.26 以降にも対応する互換性修正を含みます。
 
 > UE プロジェクトとの統合や `clang-format` の利用は後続フェーズで手順を提供する予定です。
 
