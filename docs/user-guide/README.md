@@ -1,22 +1,19 @@
 # 利用者向けガイド
 
-このディレクトリでは、`proto2ue` を使って Protocol Buffers (proto2) のスキーマから Unreal Engine 向けコードを生成するための実務的な情報をまとめています。Descriptor 解析と Unreal Engine 型へのマッピングに加えて、`proto2ue.codegen` が出力するヘッダー／ソースのスケルトンを UE プロジェクトへ取り込むまでをカバーしています。今後は変換ヘルパーや Unreal Build Tool (UBT) との統合手順も追加する予定です。
+このディレクトリでは `proto2ue` を使って Protocol Buffers (proto2) のスキーマから Unreal Engine 向けコードと変換ヘルパーを生成するための実務情報をまとめています。Descriptor 解析と Unreal Engine 型へのマッピング、`proto2ue.codegen` が出力するヘッダー／ソースの読み方に加え、生成した構造体と protobuf メッセージを相互変換するコンバーター (`ConvertersTemplate`) の統合手順までカバーします。
 
-## ドキュメント構成
+## コンテンツ
 
 - [セットアップと初期設定](getting-started.md)
-  - 推奨環境、`protoc` / Python の準備方法
-  - 仮想環境の作成と依存パッケージのインストール
-  - `proto2ue` プラグインの呼び出し確認
+  - 推奨環境、`protoc` プラグインのインストール方法、サンプル proto からのコード生成手順。
+  - 生成物の配置と Unreal Build Tool での依存解決のポイント。
 - [基本ワークフロー・チュートリアル](tutorials/basic-workflow.md)
-  - シンプルな proto ファイルを用いた中間表現とコード生成結果の確認手順
-  - Unreal Engine で扱いやすい命名規則へのマッピング解説
-  - 生成されたヘッダー／ソースの読み解きポイントと次のステップへの橋渡し
+  - シンプルな proto ファイルを用いた中間表現 (`proto2ue.model`) とコード生成結果の確認手順。
+  - Optional ラッパー、`TArray`/`TMap`、`oneof` の展開、`unreal.*` オプションによるメタデータ制御の例。
+  - `ConvertersTemplate` から得られる C++/Blueprint 変換ヘルパーのラウンドトリップ検証。
 
-## ドキュメント更新の方針
+## 更新ポリシー
 
-- 仕様や CLI オプションが追加された場合は、本ガイドに追記して最新の操作手順を提供します。
-- チュートリアルで使用しているサンプルは、公式のサンプルプロジェクト公開まではドキュメント内コードスニペットで代替します。
-- UE との連携手順が固まり次第、環境固有の注意点 (ビルド設定、`clang-format`、Blueprint 対応など) を追加する予定です。
-
-ご意見・改善案があれば Issue / Pull Request にてお知らせください。
+- CLI オプションやテンプレート構成の変更が入った場合は、必ずセットアップ手順とワークフローの該当箇所を更新します。
+- チュートリアルで使用しているコードスニペットは `tests/golden/` の最新出力を基準に保守します。
+- Unreal Engine 側の運用ノウハウ (Build.cs 設定、Blueprint での利用例など) は整備でき次第追記します。

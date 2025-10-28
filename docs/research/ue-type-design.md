@@ -1,67 +1,75 @@
-# UE 側型設計とヘルパー API 要件
+# UE 側型設計とヘルパー API 要件 (2024-06 更新)
+
+`TypeMapper`・`DefaultTemplateRenderer`・`ConvertersTemplate` の実装内容を反映した最新の設計ノートです。proto2 のメッセージ／列挙をどのように UE の型へマッピングし、Optional や Blueprint サポートを扱うかを記録します。
 
 ## 命名規約
 
-- 生成 `USTRUCT` は `FProto` 接頭辞 + PascalCase。例: `message PlayerState` → `USTRUCT(BlueprintType) struct FProtoPlayerState`。
-- 生成 `UENUM` は `EProto` 接頭辞 + PascalCase。
-- `oneof` を表す補助構造体は `FProto<Player>_OneOf_<Field>` のような `F` 接頭辞。
-- 内部ヘルパー関数や名前空間は `Proto2UE` で統一。
+- メッセージは `F` プレフィックス + パッケージ相対名を PascalCase 化した名前 (`FPerson`, `FExampleMeta`)。
+- 列挙は `E` プレフィックス (`EColor`, `EPersonMood`)。値は proto の名前をそのまま使用。
+- Optional ラッパーは `FProtoOptional` + `<ファイル識別子><基底型名>` (`FProtoOptionalExamplePersonFString`)。ファイル識別子は proto ファイル名から生成され、衝突を避ける。
+- 名前衝突時は `Proto` を挿入 (`FProtoPerson` / `EProtoPerson`)。UE 側の予約語 (`FVector` など) は自動的に避ける。
+- 生成コードの名前空間は `UE_NAMESPACE_BEGIN(<package>)` / `UE_NAMESPACE_END(<package>)` でラップし、追加の内部ヘルパー (`Proto2UE::Converters`) は別名前空間で定義。
 
-## リフレクション属性
+## リフレクション属性とメタデータ
 
-- `USTRUCT(BlueprintType)` + `GENERATED_BODY()` を付与。エディタ公開用には `UPROPERTY(BlueprintReadWrite)`。
-- `optional` 等で Blueprint 露出が不要な場合は `BlueprintReadOnly` を検討。非公開フィールドは `VisibleAnywhere` を使用。
-- `UENUM(BlueprintType)` とし、`UMETA(DisplayName="...")` を付けて proto 定義のコメントを転用可能にする。
+- メッセージ (`USTRUCT`) と列挙 (`UENUM`) は `BlueprintType` をデフォルトで付与。`unreal = { blueprint_type: false }` オプションが指定された場合は除外。
+- フィールド (`UPROPERTY`) は既定で `BlueprintReadWrite`。`unreal.field = { blueprint_read_only: true }` で `BlueprintReadOnly` に切り替え。
+- `unreal` オプションの `specifiers`, `meta`, `category` を解析し、`UPROPERTY(...)` の引数と `meta=(...)` に反映。
+- Optional ラッパーの `Value` プロパティは、基底型が Blueprint 非公開の場合 (`blueprint_type: false`) に `BlueprintReadOnly`/`BlueprintType` を無効化。
 
 ## フィールド型マッピング
 
-| Proto 型 | UE 型 | ノート |
-| --- | --- | --- |
-| `int32`/`sint32`/`sfixed32` | `int32` | 範囲は `INT32_MIN..INT32_MAX`。`sint`/`sfixed` はエンコード方式のみの差で UE 側は統一。 |
-| `int64`/`sint64`/`sfixed64` | `int64` | Blueprint 公開時は `int64` をラップする `FProtoInt64` を検討。 |
-| `uint32` | `uint32` | Blueprint ではサポート外のため `int32` にフォールバックするかラッパー生成。 |
-| `uint64` | `uint64` | Blueprint 非対応。`FProtoUInt64` ラッパー案。 |
-| `fixed32`/`fixed64` | `uint32`/`uint64` | Encode 差異は変換ヘルパーで吸収。 |
-| `float` | `float` | `UPROPERTY` で `meta=(ClampMin, ClampMax)` などをコメントから生成可能。 |
-| `double` | `double` | Blueprint で `double` 非対応のため `FProtoDouble` ラッパー案。 |
-| `bool` | `bool` | そのまま利用。 |
-| `string` | `FString` | UTF-8 ↔ UTF-16 変換はヘルパーに集約。 |
-| `bytes` | `TArray<uint8>` | `TArray64` は不要。 |
-| `enum` | `TEnumAsByte<EProto...>` | Blueprint 化時は `UPROPERTY(BlueprintReadWrite)` で `TEnumAsByte` を利用。 |
-| メッセージ型 | `FProto<Msg>` | 値型をそのままメンバーとして含む。 |
+`TypeMapper._SCALAR_MAPPING` に基づく標準マッピング:
 
-## Optional / Oneof の表現
+| Proto 型 | UE 型 |
+| --- | --- |
+| `double` | `double` |
+| `float` | `float` |
+| `int32` / `sint32` / `sfixed32` | `int32` |
+| `uint32` / `fixed32` | `uint32` |
+| `int64` / `sint64` / `sfixed64` | `int64` |
+| `uint64` / `fixed64` | `uint64` |
+| `bool` | `bool` |
+| `string` | `FString` |
+| `bytes` | `TArray<uint8>` |
 
-- `optional` フィールドは `FProtoOptional<T>`（テンプレート）を生成し、`TOptional` に Blueprint メタデータを付加。
-- `oneof` は `struct FProtoOneof_<Name>` を作成し、内部に `E<Name>Case` 列挙と各フィールドの `FProtoOptional` を持つ。
-- `required` は単純なメンバー + 検証用メソッド。
+その他:
 
-## 変換ヘルパー API
+- メッセージ／列挙フィールドはマッピング済みの `F`/`E` 型を参照。
+- `repeated` は `TArray<要素型>`、`map<K,V>` は `TMap<K, V>` に展開。
+- `optional` および `oneof` メンバーは Optional ラッパーに包まれ、`bIsSet` と `Value` を持つ構造体になる。
 
-### 共通コンセプト
+## Optional / Oneof の扱い
 
-- 名前空間: `namespace Proto2UE::Converters`
-- 関数命名: `void ToProto(const FProtoPlayerState& Source, proto::PlayerState& Out);`
-- 逆変換: `bool FromProto(const proto::PlayerState& Source, FProtoPlayerState& Out, FProtoValidationContext* Context = nullptr);`
+- Optional ラッパーは proto ファイル内で一意に生成され、複数フィールドで共有。`bIsSet` が `false` の場合 `Value` は既定値。
+- `oneof` の構造体はまだ C++ に出力していないが、`UEOneofWrapper` として中間表現に保持しており、コメントで `// oneof ...` を出力。今後のテンプレート更新で専用の wrapper struct を生成可能。
+- proto2 の `required` は追加ラッパーを生成せず、そのままフィールドとして出力。
 
-### エラーハンドリング
+## コード生成規約
 
-- `Context` に `AddError(FString Message, const void* FieldDescriptor)` のようなメソッドを用意。未設定 required フィールドや enum 未知値を記録。
-- Fatal エラーは `ensureMsgf(false, TEXT("..."))` で Editor のみ停止。
+- `.proto2ue.h` は `#pragma once` + 生成警告コメント + `#include "CoreMinimal.h"` + 自動生成ヘッダー (`.generated.h`) を含む。
+- `.proto2ue.cpp` は対応するヘッダーをインクルードし、`Proto2UE::RegisterGeneratedTypes()` スタブを配置。今後コンバーターやリフレクション登録コードを拡張予定。
+- Optional ラッパーはメッセージの直前に生成され、同一型の循環参照を回避するために依存順序を調整して出力。
 
-### Blueprint サポート
+## 変換ヘルパー API (`ConvertersTemplate`)
 
-- `UBlueprintFunctionLibrary` (`UProto2UEBlueprintLibrary`) を生成し、`UFUNCTION(BlueprintCallable)` で `ToProtoBytes` / `FromProtoBytes` を提供。
-- `TArray<uint8>` と `FString` を入出力に使い、ゲームコード側で簡易に呼べるようにする。
+- 名前空間: `namespace Proto2UE::Converters`。
+- 生成関数:
+  - `void ToProto(const FPerson& Source, example::Person& Out, FConversionContext* Context = nullptr);`
+  - `bool FromProto(const example::Person& Source, FPerson& Out, FConversionContext* Context = nullptr);`
+- `FConversionContext` は `TArray<FConversionError>` を保持し、`AddError` / `HasErrors` / `GetErrors` を提供。
+- Blueprint 用ラッパー: `UProto2UEBlueprintLibrary` に `<Name>ToProtoBytes` / `<Name>FromProtoBytes` を生成し、`Error` を `FString` で返却。
+- Python 版 (`PythonConvertersRuntime`) は単体テストでラウンドトリップ検証に利用。
 
 ## ドキュメント化すべきルール
 
-1. 生成コードはヘッダーのみ（`.generated.h` + `.h`）とし、`.cpp` はヘルパー API のみ。`Inline` 化でインクルードサイクルを避ける。
-2. `#pragma once` の直後に自動生成警告コメントを挿入し、手動編集を防止。
-3. `UE_DISABLE_OPTIMIZATION` 等のマクロは原則使用しない。必要なら `#ifdef WITH_EDITOR` で切り替える。
+1. Optional ラッパーの命名は proto ファイルごとに安定しており、他ファイルと共有しない。ヘッダーの include 順序を変更する際は依存関係に注意。
+2. `UE_NAMESPACE_BEGIN/END` を利用するため、UE5.1 以降を対象とする (`UE_NAMESPACE_BEGIN` は 5.1+ の機能)。
+3. 生成コードを手動編集しないよう、ヘッダーとソースの先頭に「Generated by proto2ue」コメントを入れている。差分生成ではコメントを比較して再生成可否を判断する。
 
-## 未確定事項
+## 今後の検討事項
 
-- 大規模 `map` や `repeated` に対するムーブ最適化（`TArray::Reset`）をどこまで自動生成するか。
-- Blueprint 専用ラッパー型 (`FProtoInt64` 等) の API 仕様とシリアライズ対応。
-- `FInstancedStruct` 等の UE5.3 新機能を活かした柔軟な `oneof` 実装の可否。
+- `oneof` 専用ラッパー生成と Blueprint UI での選択肢表示 (`FInstancedStruct` 等)。
+- Blueprint から扱いやすい 64bit 数値ラッパー (`FProtoInt64`, `FProtoUInt64`) の導入。現在は直接 `int64` / `uint64` を露出。
+- 生成コードの差分書き込み (`manifest.json`) と `clang-format` の自動適用。
+- `ConvertersTemplate` と `DefaultTemplateRenderer` を統合し、`generate_code` から一括で `.converters.*` を出力するオプション追加。

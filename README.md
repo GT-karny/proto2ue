@@ -1,124 +1,93 @@
 # proto2ue
 
-`proto2ue` は Protocol Buffers (proto2) の定義から Unreal Engine 向けの C++ 構造体／列挙体と変換ヘルパーを自動生成する `protoc` プラグインを目指すプロジェクトです。メッセージを `USTRUCT`、列挙型を `UENUM` として出力し、`optional` / `repeated` / `oneof` / `map` といった言語機能に対応した UE ネイティブな型を生成できるよう設計しています。
+`proto2ue` は Protocol Buffers (proto2) のスキーマから Unreal Engine 向けの C++ コードと変換ヘルパーを生成する `protoc` プラグイン／ライブラリです。FileDescriptorSet から独自の中間表現を構築し、UE の命名規約や `UPROPERTY` メタデータに合わせた `USTRUCT` / `UENUM` を出力します。Blueprint 互換の Optional ラッパー、`TArray` / `TMap` を用いたコンテナ展開、`oneof` のメタデータ保持に対応しており、生成コードと protobuf メッセージ間を相互変換する C++ コンバーターと Blueprint 用関数ライブラリも生成できます。
 
-> **Status**: `protoc` プラグインのエントリーポイントと Descriptor 解析、中間表現の構築、Unreal Engine 型へのマッピング (`TypeMapper`) を実装済みです。ヘッダー／ソースのスケルトンコードを生成するテンプレート (`proto2ue.codegen`) も利用可能で、今後は変換ヘルパーや Unreal Build Tool との統合を拡充する予定です。
+> **Current status**: `DescriptorLoader`・`TypeMapper`・テンプレートレンダラー (`proto2ue.codegen`)・コンバーター生成 (`proto2ue.codegen.converters`) を実装済みです。`pytest` による回帰テストと Python 実装のラウンドトリップ検証で、`optional` / `repeated` / `map` / `oneof` / ネスト型 / カスタム Unreal オプションをカバーしています。Unreal Build Tool との自動統合や公式配布パッケージはこれからです。
 
 ---
 
 ## 目次
 
-- [主な機能](#主な機能)
-- [プロジェクトのゴール](#プロジェクトのゴール)
-- [要件](#要件)
+- [主な特徴](#主な特徴)
+- [リポジトリ構成](#リポジトリ構成)
 - [セットアップ](#セットアップ)
 - [クイックスタート](#クイックスタート)
-- [チュートリアルとドキュメント](#チュートリアルとドキュメント)
+- [ドキュメント](#ドキュメント)
 - [テスト](#テスト)
 - [制限事項と今後の予定](#制限事項と今後の予定)
 - [ライセンス](#ライセンス)
 
-## 主な機能
+## 主な特徴
 
-- `CodeGeneratorRequest` からの Descriptor 解析と、依存関係を解決した中間モデル (`proto2ue.model`) の構築。
-- Unreal Engine の命名規則に合わせて `F`/`E` プレフィックス付きの型名を生成するマッピングレイヤ (`proto2ue.type_mapper`).
-- Unreal Engine 既存の `FVector` 系などと衝突する場合は、自動的に `FProtoVector` のようなフォールバック名へリネームする安全機構。
-- `optional` / `repeated` / `map` / `oneof` を含む複雑なフィールド構造を UE の `TOptional` / `TArray` / `TMap` / ラッパー構造へ変換する仕組み。
-- カスタムオプションを保持したまま中間表現へ転写できるように設計されたオプション正規化ロジック。
-- UE のパッケージ構造に合わせ、`UE_NAMESPACE_BEGIN` / `UE_NAMESPACE_END` マクロで名前空間をラップした C++ コードを生成。
+- **Descriptor 正規化**: `DescriptorLoader` が `CodeGeneratorRequest` から依存関係を検証しつつ `proto2ue.model` のデータクラスへ変換します。`map_entry` や `oneof` のリンク、カスタムオプション (`unreal.*`) を取り込みます。
+- **UE 型マッピング**: `TypeMapper` がメッセージ／列挙を UE 命名規約 (`F`/`E` プレフィックス) に沿って命名し、`optional` を Blueprint 対応のラッパー構造体として合成、`repeated`→`TArray`、`map`→`TMap` に展開します。`UPROPERTY` のメタデータや `BlueprintReadWrite`/`BlueprintReadOnly` も反映します。
+- **コード生成**: `DefaultTemplateRenderer` が proto ごとに `.proto2ue.h` / `.proto2ue.cpp` を生成し、名前空間ラッパー (`UE_NAMESPACE_BEGIN/END`) や `RegisterGeneratedTypes` スタブを出力します。
+- **変換ヘルパー**: `ConvertersTemplate` が UE 構造体と protobuf メッセージ間の双方向変換関数、エラー収集用コンテキスト、Blueprint 向けのシリアライズ関数 (`UProto2UEBlueprintLibrary`) を生成します。Python 実装の `PythonConvertersRuntime` でテンプレート出力の挙動をテストできます。
 
-## プロジェクトのゴール
+## リポジトリ構成
 
-- Unreal Engine 5.3 をターゲットに、proto2 のメッセージ／列挙定義から UE 側の C++ コード（`USTRUCT` / `UENUM`）を自動生成。
-- 生成コードに Proto ↔ UE の双方向変換ヘルパーや Blueprint 向けの補助 API を追加し、ネットワークや保存データとの相互運用を容易にする。
-- `clang-format` 連携や Unreal Build Tool との統合、モジュール登録フックの自動化などを段階的に整備します。
-
-## 要件
-
-- Python 3.11 以上
-- `protoc` (Protocol Buffers Compiler) 3.21 以上
-- Python パッケージ: `protobuf`, `pytest` (テスト実行時)
-  - `json_format.MessageToDict` のシグネチャ変更が入った protobuf 4.26 以降にも対応する互換性修正を含みます。
-
-> UE プロジェクトとの統合や `clang-format` の利用は後続フェーズで手順を提供する予定です。
+```
+src/proto2ue/        ─ コア実装 (descriptor_loader, type_mapper, codegen など)
+tests/               ─ pytest ベースのユニットテストと golden ファイル
+docs/                ─ 利用ガイド・調査資料
+plan/                ─ フェーズ別の開発プラン
+```
 
 ## セットアップ
 
-1. リポジトリをクローンします。
+Python 3.11 以上と `protobuf` が必要です。開発環境では追加で `pytest` を使用します。
 
-   ```bash
-   git clone https://github.com/your-org/proto2ue.git
-   cd proto2ue
-   ```
-
-2. 仮想環境を作成・有効化して依存パッケージをインストールします。
-
-   ```bash
-   python -m venv .venv
-   source .venv/bin/activate  # Windows の場合は .venv\Scripts\activate
-   pip install --upgrade pip
-   pip install protobuf pytest
-   ```
-
-3. `protoc` がパスに入っていることを確認します。
-
-   ```bash
-   protoc --version
-   ```
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -r requirements.txt  # or pip install protobuf pytest
+```
 
 ## クイックスタート
 
-1. proto ファイルを用意します。例として `address_book.proto` を作成します。
-
-   ```proto
-   syntax = "proto2";
-
-   package demo;
-
-   message Person {
-     required string name = 1;
-     optional string email = 2;
-   }
-
-   message AddressBook {
-     repeated Person people = 1;
-   }
-   ```
-
-2. `protoc` でプラグインを呼び出します。リポジトリを直接利用する場合は、Python モジュールを解決できるよう `PYTHONPATH` を設定し、`protoc` から呼び出される薄いラッパースクリプトを作成してください。
+1. **ユニットテストの実行** — 依存関係が揃っていることを `pytest` で確認します。
 
    ```bash
-   export PYTHONPATH="$(pwd)/src:${PYTHONPATH}"
-
-   cat <<'SCRIPT' > ./protoc-gen-proto2ue
-   #!/usr/bin/env bash
-   PYTHONPATH="${PYTHONPATH}" python -m proto2ue.plugin "$@"
-   SCRIPT
-   chmod +x ./protoc-gen-proto2ue
-
-   protoc \
-     --plugin=protoc-gen-proto2ue="$(pwd)/protoc-gen-proto2ue" \
-     --proto2ue_out=./Generated \
-     --proto_path=. \
-     address_book.proto
+   pytest
    ```
 
-   `--proto2ue_out` で指定したディレクトリに `<proto 名>.proto2ue.h/.cpp` が生成されます。Descriptor 解析や型マッピングに失敗した場合は `protoc` がエラーを表示し、終了コードが 1 になります。
+2. **`protoc` プラグインの登録** — `proto2ue.plugin` を実行するラッパースクリプトを作成します (例では `~/.local/bin` に配置)。
 
-3. 生成されたヘッダーには `USTRUCT` / `UENUM` 宣言と `UPROPERTY` メタデータが含まれ、ソースファイルには将来のモジュール登録に利用する `RegisterGeneratedTypes_*` スタブ関数が出力されます。Unreal Engine 型へのマッピングをより詳しく確認したい場合は、`tests/test_type_mapper.py` を参考に Python スクリプトを記述し、`TypeMapper` による名称／型変換ロジックを実行できます。
+   ```bash
+   cat <<'SCRIPT' > ~/.local/bin/protoc-gen-ue
+   #!/usr/bin/env python3
+   from proto2ue import plugin
 
-## チュートリアルとドキュメント
+   if __name__ == "__main__":
+       plugin.main()
+   SCRIPT
+   chmod +x ~/.local/bin/protoc-gen-ue
+   export PATH="$HOME/.local/bin:$PATH"
+   ```
 
-- [利用者向けガイド](docs/user-guide/README.md)
-  - [セットアップと初期設定](docs/user-guide/getting-started.md)
-  - [基本ワークフロー・チュートリアル](docs/user-guide/tutorials/basic-workflow.md)
-- 開発背景とアーキテクチャ設計メモは [`docs/research`](docs/research) を参照してください。
+3. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`.proto2ue.converters.h/.cpp`) です。
 
-サンプルの proto ファイルと UE プロジェクトは今後のリリースで提供予定です。本ドキュメントでは、同等の内容をチュートリアル内で段階的に説明しています。
+   ```bash
+   protoc \
+     --plugin=protoc-gen-ue=protoc-gen-ue \
+     --ue_out=./Intermediate/Proto2UE \
+     example/person.proto
+   ```
+
+   生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
+
+4. **Unreal Engine への統合** — `Intermediate/Proto2UE` 以下を UE プロジェクトに追加し、`Build.cs` から依存ライブラリ (`google::protobuf`) を解決します。詳細な手順は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
+
+## ドキュメント
+
+- [docs/user-guide/](docs/user-guide/README.md): セットアップ手順、ワークフロー、生成コードの読み解き方、コンバーター統合ガイド。
+- [docs/research/](docs/research/README.md): Unreal Build Tool 連携、型設計、サポートマトリクスなどの調査ノート。
+- [plan/development_plan.md](plan/development_plan.md): フェーズ別進捗と今後のマイルストーン。
 
 ## テスト
 
-単体テストは `pytest` で実行できます。
+`pytest` が DescriptorLoader・TypeMapper・コード生成・Python コンバーターをカバーするゴールデンテスト／ラウンドトリップテストを提供します。
 
 ```bash
 pytest
@@ -126,10 +95,10 @@ pytest
 
 ## 制限事項と今後の予定
 
-- 生成される C++ コードはヘッダー／ソースのスケルトン (構造体・列挙体、`UPROPERTY` メタデータ、登録スタブ) に限られます。変換ヘルパーや Blueprint 拡張 API は次フェーズで提供予定です。
-- `proto2ue` 固有のオプション (Blueprint メタデータ、カテゴリ設定など) は `unreal` オプション名前空間で受け付けますが、将来の拡張に備えて仕様変更となる可能性があります。
-- サンプル UE プロジェクトは整備中です。チュートリアルで代替手順を提供しています。
+- 現時点では proto2 のみサポートし、proto3 特有のフィールド (`optional`, `oneof` の挙動差など) は未検証です。
+- UE 側の自動ビルド統合 (UBT ターゲット登録、`RunUAT` ワークフロー) は調査段階です。
+- 生成コードの整形 (`clang-format`) と増分出力、公式配布パッケージングは未実装です。
 
 ## ライセンス
 
-ライセンスは今後の公開に合わせて決定予定です。現段階では社内利用のみを想定しています。
+TBD
