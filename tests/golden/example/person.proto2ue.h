@@ -92,9 +92,9 @@ UE_NAMESPACE_BEGIN(example)
         UPROPERTY(BlueprintReadWrite)
         FProtoOptionalExamplePersonFPersonAttributes attributes{};
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> email{};
+        FProtoOptionalExamplePersonFString email{};
         UPROPERTY(BlueprintReadWrite)
-        TOptional<FString> phone{};
+        FProtoOptionalExamplePersonFString phone{};
         UPROPERTY(BlueprintReadWrite)
         FProtoOptionalExamplePersonEPersonMood mood{};
         // oneof contact: email, phone
