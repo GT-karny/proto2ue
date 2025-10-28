@@ -89,12 +89,18 @@ class DefaultTemplateRenderer:
         message_names = {message.ue_name for message in messages}
         rendered_messages: set[str] = set()
 
-        def emit_wrapper(wrapper: UEOptionalWrapper) -> None:
+        def emit_wrapper(
+            wrapper: UEOptionalWrapper, *, current_message: str | None = None
+        ) -> None:
             wrapper_id = id(wrapper)
             if wrapper_id in rendered_wrappers:
                 return
             base_type = wrapper.base_type
-            if base_type in message_names and base_type not in rendered_messages:
+            if (
+                base_type in message_names
+                and base_type not in rendered_messages
+                and base_type != current_message
+            ):
                 raise RuntimeError(
                     "Optional wrapper emitted before base message definition: "
                     f"{wrapper.ue_name} depends on {base_type}"
@@ -119,7 +125,7 @@ class DefaultTemplateRenderer:
                 seen_wrapper_ids.add(wrapper_id)
                 unique_wrappers.append(wrapper)
             for wrapper in unique_wrappers:
-                emit_wrapper(wrapper)
+                emit_wrapper(wrapper, current_message=message.ue_name)
 
             lines.extend(self._render_message(message, indent_level=len(namespace_stack)))
             rendered_messages.add(message.ue_name)
