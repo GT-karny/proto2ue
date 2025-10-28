@@ -724,11 +724,15 @@ class ConvertersTemplate:
                     )
                     lines.append("    }")
                 else:
+                    value_expr = "Kvp.Value"
+                    if map_entry.value_kind is model.FieldKind.ENUM:
+                        proto_type = self._qualified_proto_map_value_enum_type(field)
+                        value_expr = f"static_cast<{proto_type}>(Kvp.Value)"
                     lines.append(
                         f"    for (const auto& Kvp : Source.{field.name}) {{"
                     )
                     lines.append(
-                        f"        {map_container}[Kvp.Key] = Kvp.Value;"
+                        f"        {map_container}[Kvp.Key] = {value_expr};"
                     )
                     lines.append("    }")
             elif field.is_repeated:
@@ -744,8 +748,12 @@ class ConvertersTemplate:
                     )
                     lines.append("    }")
                 else:
+                    item_expr = "Item"
+                    if field.kind is model.FieldKind.ENUM:
+                        proto_type = self._qualified_proto_enum_type(field)
+                        item_expr = f"static_cast<{proto_type}>(Item)"
                     lines.append(
-                        f"    for (const auto& Item : Source.{field.name}) {{ Out.add_{field_name}(Item); }}"
+                        f"    for (const auto& Item : Source.{field.name}) {{ Out.add_{field_name}({item_expr}); }}"
                     )
             elif field.kind is model.FieldKind.MESSAGE:
                 if field.is_optional:
@@ -764,11 +772,13 @@ class ConvertersTemplate:
                 condition = (
                     f"Source.{field.name}.IsSet()" if field.is_optional else "true"
                 )
-                assignment = (
-                    f"Out.set_{field_name}(Source.{field.name}.GetValue());"
-                    if field.is_optional
-                    else f"Out.set_{field_name}(Source.{field.name});"
+                value_expr = (
+                    f"Source.{field.name}.GetValue()" if field.is_optional else f"Source.{field.name}"
                 )
+                if field.kind is model.FieldKind.ENUM:
+                    proto_type = self._qualified_proto_enum_type(field)
+                    value_expr = f"static_cast<{proto_type}>({value_expr})"
+                assignment = f"Out.set_{field_name}({value_expr});"
                 lines.append(f"    if ({condition}) {{ {assignment} }}")
         lines.append("}")
         return lines
@@ -817,7 +827,11 @@ class ConvertersTemplate:
                 f"{indent}ToProto(ActiveValue, *Out.mutable_{field_name}(), Context);"
             )
         else:
-            lines.append(f"{indent}Out.set_{field_name}(ActiveValue);")
+            value_expr = "ActiveValue"
+            if field.kind is model.FieldKind.ENUM:
+                proto_type = self._qualified_proto_enum_type(field)
+                value_expr = f"static_cast<{proto_type}>({value_expr})"
+            lines.append(f"{indent}Out.set_{field_name}({value_expr});")
         return lines
 
     def _render_from_proto_function(
@@ -858,8 +872,12 @@ class ConvertersTemplate:
                         f"        Out.{field.name}.Add(Kvp.first, Value);"
                     )
                 else:
+                    value_expr = "Kvp.second"
+                    if map_entry.value_kind is model.FieldKind.ENUM:
+                        value_type = field.map_value_type or "auto"
+                        value_expr = f"static_cast<{value_type}>(Kvp.second)"
                     lines.append(
-                        f"        Out.{field.name}.Add(Kvp.first, Kvp.second);"
+                        f"        Out.{field.name}.Add(Kvp.first, {value_expr});"
                     )
                 lines.append("    }")
             elif field.is_repeated:
@@ -875,8 +893,11 @@ class ConvertersTemplate:
                     )
                     lines.append("    }")
                 else:
+                    item_expr = "Item"
+                    if field.kind is model.FieldKind.ENUM:
+                        item_expr = f"static_cast<{field.base_type}>(Item)"
                     lines.append(
-                        f"    for (const auto& Item : Source.{field_name}()) {{ Out.{field.name}.Add(Item); }}"
+                        f"    for (const auto& Item : Source.{field_name}()) {{ Out.{field.name}.Add({item_expr}); }}"
                     )
             elif field.kind is model.FieldKind.MESSAGE:
                 if field.is_optional:
@@ -884,7 +905,10 @@ class ConvertersTemplate:
                         f"    if (Source.has_{field_name}()) {{"
                     )
                     lines.append(
-                        f"        bOk = FromProto(Source.{field_name}(), Out.{field.name}.Emplace_GetRef(), Context) && bOk;"
+                        f"        auto& Dest = Out.{field.name}.Emplace();"
+                    )
+                    lines.append(
+                        "        bOk = FromProto(Source.{field_name}(), Dest, Context) && bOk;"
                     )
                     lines.append("    }")
                 else:
@@ -893,11 +917,17 @@ class ConvertersTemplate:
                     )
             else:
                 if field.is_optional:
+                    value_expr = f"Source.{field_name}()"
+                    if field.kind is model.FieldKind.ENUM:
+                        value_expr = f"static_cast<{field.base_type}>({value_expr})"
                     lines.append(
-                        f"    if (Source.has_{field_name}()) {{ Out.{field.name} = Source.{field_name}(); }}"
+                        f"    if (Source.has_{field_name}()) {{ Out.{field.name} = {value_expr}; }}"
                     )
                 else:
-                    lines.append(f"    Out.{field.name} = Source.{field_name}();")
+                    value_expr = f"Source.{field_name}()"
+                    if field.kind is model.FieldKind.ENUM:
+                        value_expr = f"static_cast<{field.base_type}>({value_expr})"
+                    lines.append(f"    Out.{field.name} = {value_expr};")
         lines.append("    return bOk && (!Context || !Context->HasErrors());")
         lines.append("}")
         return lines
@@ -927,8 +957,11 @@ class ConvertersTemplate:
                     f"                bOk = FromProto(Source.{field_name}(), Out.{field.name}, Context) && bOk;"
                 )
             else:
+                value_expr = f"Source.{field_name}()"
+                if field.kind is model.FieldKind.ENUM:
+                    value_expr = f"static_cast<{field.base_type}>({value_expr})"
                 lines.append(
-                    f"                Out.{field.name} = Source.{field_name}();"
+                    f"                Out.{field.name} = {value_expr};"
                 )
             lines.append("            }")
         lines.append("        }")
@@ -948,6 +981,35 @@ class ConvertersTemplate:
         if not message.source:
             raise ValueError("UEMessage is missing source metadata")
         return "::".join(message.source.full_name.split("."))
+
+    def _qualified_proto_enum_type(self, field: UEField) -> str:
+        source = field.source
+        if source is None:
+            raise ValueError("Field is missing source metadata")
+        resolved = source.resolved_type
+        if isinstance(resolved, model.Enum):
+            return self._format_proto_type_name(resolved.full_name)
+        if source.type_name:
+            return self._format_proto_type_name(source.type_name)
+        raise ValueError("Enum field is missing type information")
+
+    def _qualified_proto_map_value_enum_type(self, field: UEField) -> str:
+        source = field.source
+        if source is None or source.map_entry is None:
+            raise ValueError("Map field is missing source metadata")
+        entry = source.map_entry
+        resolved = entry.value_resolved_type
+        if isinstance(resolved, model.Enum):
+            return self._format_proto_type_name(resolved.full_name)
+        if entry.value_type_name:
+            return self._format_proto_type_name(entry.value_type_name)
+        raise ValueError("Map enum value is missing type information")
+
+    def _format_proto_type_name(self, name: str) -> str:
+        stripped = name.lstrip(".")
+        if not stripped:
+            raise ValueError("Cannot qualify an empty proto type name")
+        return "::".join(stripped.split("."))
 
     def _qualified_ue_type(self, message: UEMessage) -> str:
         namespace = self._ue_namespace()
