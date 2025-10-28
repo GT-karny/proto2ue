@@ -411,7 +411,58 @@ def test_type_mapper_registers_imported_symbols_across_files() -> None:
     assert ue_consumer.fields[0].optional_wrapper.base_type == "FSharedMessage"
     assert ue_consumer.fields[1].base_type == "ESharedState"
     assert ue_consumer.fields[1].ue_type == "FProtoOptionalConsumerESharedState"
-
     wrappers = {wrapper.base_type: wrapper for wrapper in ue_file.optional_wrappers}
     assert set(wrappers) == {"FSharedMessage", "ESharedState"}
+
+
+def test_optional_wrapper_names_include_proto_path_segments() -> None:
+    mapper = TypeMapper()
+
+    first_field = model.Field(
+        name="name",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.SCALAR,
+        scalar="string",
+    )
+    first_message = model.Message(
+        name="Thing",
+        full_name="example.Thing",
+        fields=[first_field],
+    )
+    first_proto = model.ProtoFile(
+        name="foo/common.proto",
+        package="example",
+        messages=[first_message],
+        enums=[],
+    )
+
+    second_field = model.Field(
+        name="name",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.SCALAR,
+        scalar="string",
+    )
+    second_message = model.Message(
+        name="Thing",
+        full_name="example.Thing",
+        fields=[second_field],
+    )
+    second_proto = model.ProtoFile(
+        name="bar/common.proto",
+        package="example",
+        messages=[second_message],
+        enums=[],
+    )
+
+    first_result = mapper.map_file(first_proto)
+    second_result = mapper.map_file(second_proto)
+
+    first_wrapper = {wrapper.base_type: wrapper for wrapper in first_result.optional_wrappers}["FString"]
+    second_wrapper = {wrapper.base_type: wrapper for wrapper in second_result.optional_wrappers}["FString"]
+
+    assert first_wrapper.ue_name == "FProtoOptionalFooCommonFString"
+    assert second_wrapper.ue_name == "FProtoOptionalBarCommonFString"
+    assert first_wrapper.ue_name != second_wrapper.ue_name
 

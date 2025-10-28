@@ -20,7 +20,7 @@ namespace example {
     };
 
     USTRUCT(BlueprintType)
-    struct FProtoOptionalPersonFString {
+    struct FProtoOptionalExamplePersonFString {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
         bool bIsSet = false;
@@ -32,18 +32,18 @@ namespace example {
     struct FMeta {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalPersonFString created_by{};
+        FProtoOptionalExamplePersonFString created_by{};
     };
 
     USTRUCT(BlueprintType)
     struct FPersonAttributes {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalPersonFString nickname{};
+        FProtoOptionalExamplePersonFString nickname{};
     };
 
     USTRUCT(BlueprintType)
-    struct FProtoOptionalPersonInt32 {
+    struct FProtoOptionalExamplePersonInt32 {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
         bool bIsSet = false;
@@ -52,7 +52,7 @@ namespace example {
     };
 
     USTRUCT(BlueprintType)
-    struct FProtoOptionalPersonEColor {
+    struct FProtoOptionalExamplePersonEColor {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
         bool bIsSet = false;
@@ -61,7 +61,7 @@ namespace example {
     };
 
     USTRUCT(BlueprintType)
-    struct FProtoOptionalPersonFPersonAttributes {
+    struct FProtoOptionalExamplePersonFPersonAttributes {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
         bool bIsSet = false;
@@ -70,7 +70,7 @@ namespace example {
     };
 
     USTRUCT(BlueprintType)
-    struct FProtoOptionalPersonEPersonMood {
+    struct FProtoOptionalExamplePersonEPersonMood {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
         bool bIsSet = false;
@@ -82,21 +82,21 @@ namespace example {
     struct FPerson {
         GENERATED_BODY()
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalPersonInt32 id{};
+        FProtoOptionalExamplePersonInt32 id{};
         UPROPERTY(BlueprintReadWrite)
         TArray<float> scores{};
         UPROPERTY(BlueprintReadWrite)
         TMap<FString, FMeta> labels{};
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalPersonEColor primary_color{};
+        FProtoOptionalExamplePersonEColor primary_color{};
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalPersonFPersonAttributes attributes{};
+        FProtoOptionalExamplePersonFPersonAttributes attributes{};
         UPROPERTY(BlueprintReadWrite)
         FString email{};
         UPROPERTY(BlueprintReadWrite)
         FString phone{};
         UPROPERTY(BlueprintReadWrite)
-        FProtoOptionalPersonEPersonMood mood{};
+        FProtoOptionalExamplePersonEPersonMood mood{};
         // oneof contact: email, phone
     };
 

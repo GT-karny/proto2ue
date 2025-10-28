@@ -477,8 +477,9 @@ class TypeMapper:
     def _sanitize_file_identifier(self, proto_name: str | None) -> Optional[str]:
         if not proto_name:
             return None
-        base = os.path.splitext(os.path.basename(proto_name))[0]
-        sanitized = re.sub(r"[^0-9A-Za-z_]", "_", base)
+        base, _ = os.path.splitext(proto_name)
+        normalized = re.sub(r"[\\/]+", "_", base)
+        sanitized = re.sub(r"[^0-9A-Za-z_]", "_", normalized)
         sanitized = re.sub(r"_+", "_", sanitized).strip("_")
         if not sanitized:
             sanitized = "File"
