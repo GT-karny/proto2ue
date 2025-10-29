@@ -4,7 +4,7 @@
 
 #include "CoreMinimal.h"
 
-#include "example/person.proto2ue.generated.h"
+#include "example/person_proto2ue.generated.h"
 
 UENUM(BlueprintType)
 enum class EColor : int32 {

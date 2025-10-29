@@ -153,12 +153,12 @@ def test_default_renderer_outputs_golden_files() -> None:
 
     files = {file.name: file.content for file in response.file}
     assert set(files) == {
-        "example/person.proto2ue.h",
-        "example/person.proto2ue.cpp",
+        "example/person_proto2ue.h",
+        "example/person_proto2ue.cpp",
     }
 
-    header_output = files["example/person.proto2ue.h"]
-    source_output = files["example/person.proto2ue.cpp"]
+    header_output = files["example/person_proto2ue.h"]
+    source_output = files["example/person_proto2ue.cpp"]
 
     assert "UE_NAMESPACE_BEGIN(" not in header_output
     assert "UE_NAMESPACE_END(" not in header_output
@@ -166,8 +166,8 @@ def test_default_renderer_outputs_golden_files() -> None:
     assert "UE_NAMESPACE_END(" not in source_output
 
     golden_dir = Path(__file__).parent / "golden"
-    header_golden = (golden_dir / "example" / "person.proto2ue.h").read_text()
-    source_golden = (golden_dir / "example" / "person.proto2ue.cpp").read_text()
+    header_golden = (golden_dir / "example" / "person_proto2ue.h").read_text()
+    source_golden = (golden_dir / "example" / "person_proto2ue.cpp").read_text()
 
     assert header_output == header_golden
     assert source_output == source_golden
@@ -187,8 +187,8 @@ def test_renderer_splits_namespace_segments() -> None:
     response = generate_code(request)
     files = {file.name: file.content for file in response.file}
 
-    header_output = files["demo/example.proto2ue.h"]
-    source_output = files["demo/example.proto2ue.cpp"]
+    header_output = files["demo/example_proto2ue.h"]
+    source_output = files["demo/example_proto2ue.cpp"]
 
     assert "UE_NAMESPACE_BEGIN(" not in header_output
     assert "UE_NAMESPACE_END(" not in header_output
@@ -198,6 +198,51 @@ def test_renderer_splits_namespace_segments() -> None:
     # Ensure the generated identifiers do not contain namespace separators
     assert "RegisterGeneratedTypes_demo_example" in source_output
     assert "RegisterGeneratedTypes_demo/example" not in source_output
+
+
+def test_renderer_sanitizes_generated_filenames() -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+
+    dependency_proto = request.proto_file.add()
+    dependency_proto.name = "demo/dependency.file.proto"
+    dependency_proto.package = "demo"
+    dependency_message = dependency_proto.message_type.add()
+    dependency_message.name = "DependencyMessage"
+
+    file_proto = request.proto_file.add()
+    file_proto.name = "demo/widget.config.proto"
+    file_proto.package = "demo"
+    file_proto.dependency.append("demo/dependency.file.proto")
+
+    widget_message = file_proto.message_type.add()
+    widget_message.name = "Widget"
+    dep_field = widget_message.field.add()
+    dep_field.name = "dependency"
+    dep_field.number = 1
+    dep_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    dep_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
+    dep_field.type_name = ".demo.DependencyMessage"
+
+    request.file_to_generate.append("demo/widget.config.proto")
+
+    response = generate_code(request)
+    files = {file.name: file.content for file in response.file}
+
+    expected_names = {"demo/widget_config_proto2ue.h", "demo/widget_config_proto2ue.cpp"}
+    assert set(files) == expected_names
+
+    header_output = files["demo/widget_config_proto2ue.h"]
+    assert '#include "demo/dependency_file_proto2ue.h"' in header_output
+    assert '#include "demo/widget_config_proto2ue.generated.h"' in header_output
+
+    for name in files:
+        component = name.rsplit("/", 1)[-1]
+        if "." in component:
+            base = component[: component.rfind(".")]
+        else:
+            base = component
+        assert base
+        assert all(ch.isalnum() or ch == "_" for ch in base)
 
 
 def test_generate_code_respects_unsigned_blueprint_flag_default() -> None:
@@ -247,7 +292,7 @@ def test_renderer_handles_reserved_identifier_collision() -> None:
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    header_output = files["physics/vector.proto2ue.h"]
+    header_output = files["physics/vector_proto2ue.h"]
 
     assert "struct FProtoVector" in header_output
     assert "struct FProtoOptionalPhysicsVectorFProtoVector" in header_output
@@ -260,7 +305,7 @@ def test_renderer_respects_rename_override_parameter() -> None:
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    header_output = files["physics/vector.proto2ue.h"]
+    header_output = files["physics/vector_proto2ue.h"]
 
     assert "struct FPhysicsVector" in header_output
     assert "struct FProtoOptionalPhysicsVectorFPhysicsVector" in header_output
@@ -300,10 +345,10 @@ def test_renderer_includes_cross_file_dependencies() -> None:
 
     response = generate_code(request)
     files = {file.name: file.content for file in response.file}
-    header_output = files["example/person.proto2ue.h"]
+    header_output = files["example/person_proto2ue.h"]
 
-    dependency_include = '#include "common/address.proto2ue.h"'
+    dependency_include = '#include "common/address_proto2ue.h"'
     assert dependency_include in header_output
     assert header_output.index(dependency_include) < header_output.index(
-        '#include "example/person.proto2ue.generated.h"'
+        '#include "example/person_proto2ue.generated.h"'
     )
