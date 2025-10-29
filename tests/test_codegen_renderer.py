@@ -188,17 +188,34 @@ def test_renderer_splits_namespace_segments() -> None:
     files = {file.name: file.content for file in response.file}
 
     header_output = files["demo/example.proto2ue.h"]
+    source_output = files["demo/example.proto2ue.cpp"]
 
-    assert "UE_NAMESPACE_BEGIN(demo)" in header_output
-    assert "UE_NAMESPACE_BEGIN(example)" in header_output
-    assert header_output.index("UE_NAMESPACE_BEGIN(demo)") < header_output.index(
-        "UE_NAMESPACE_BEGIN(example)"
-    )
-    assert "UE_NAMESPACE_END(example)" in header_output
-    assert "UE_NAMESPACE_END(demo)" in header_output
-    assert header_output.index("UE_NAMESPACE_END(example)") < header_output.index(
-        "UE_NAMESPACE_END(demo)"
-    )
+    header_begin = [
+        line for line in header_output.splitlines() if line.startswith("UE_NAMESPACE_BEGIN")
+    ]
+    header_end = [
+        line for line in header_output.splitlines() if line.startswith("UE_NAMESPACE_END")
+    ]
+
+    assert header_begin == [
+        "UE_NAMESPACE_BEGIN(demo)",
+        "UE_NAMESPACE_BEGIN(example)",
+    ]
+    assert header_end == [
+        "UE_NAMESPACE_END(example)",
+        "UE_NAMESPACE_END(demo)",
+    ]
+    assert all("." not in line for line in header_begin + header_end)
+
+    source_begin = [
+        line for line in source_output.splitlines() if line.startswith("UE_NAMESPACE_BEGIN")
+    ]
+    source_end = [
+        line for line in source_output.splitlines() if line.startswith("UE_NAMESPACE_END")
+    ]
+
+    assert source_begin == header_begin
+    assert source_end == header_end
 
 
 def test_generate_code_respects_unsigned_blueprint_flag_default() -> None:
