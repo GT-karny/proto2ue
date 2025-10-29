@@ -358,7 +358,7 @@ class TypeMapper:
         metadata = self._as_str_dict(unreal_options.get("meta"))
         category = self._as_optional_str(unreal_options.get("category"))
 
-        metadata["DisplayName"] = enum.full_name
+        metadata.setdefault("DisplayName", enum.full_name)
         if category is None:
             category = enum.full_name
 
@@ -387,7 +387,7 @@ class TypeMapper:
         struct_metadata = self._as_str_dict(unreal_options.get("meta"))
         category = self._as_optional_str(unreal_options.get("category"))
 
-        struct_metadata["DisplayName"] = message.full_name
+        struct_metadata.setdefault("DisplayName", message.full_name)
         if category is None:
             category = message.full_name
 

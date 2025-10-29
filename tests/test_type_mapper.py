@@ -244,7 +244,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert person.ue_name == "FExamplePerson"
     assert person.blueprint_type is True
     assert person.struct_specifiers == ["Atomic"]
-    assert person.struct_metadata == {"DisplayName": "example.Person"}
+    assert person.struct_metadata == {"DisplayName": "Person"}
     assert person.category == "Characters"
     assert len(person.fields) == 8
 
@@ -324,7 +324,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert person.nested_messages[0].blueprint_type is True
     assert person.nested_messages[0].struct_specifiers == ["Atomic"]
     assert person.nested_messages[0].struct_metadata == {
-        "DisplayName": "example.Person.Attributes"
+        "DisplayName": "Attributes"
     }
     nickname_field = person.nested_messages[0].fields[0]
     assert nickname_field.category == "Profile"
@@ -362,7 +362,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert [value.name for value in color_enum.values] == ["COLOR_RED", "COLOR_GREEN"]
     assert color_enum.blueprint_type is True
     assert color_enum.specifiers == ["Flags"]
-    assert color_enum.metadata == {"DisplayName": "example.Color"}
+    assert color_enum.metadata == {"DisplayName": "Color"}
 
 
 def test_type_mapper_registers_imported_symbols_across_files() -> None:
