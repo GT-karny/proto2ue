@@ -573,9 +573,33 @@ class DefaultTemplateRenderer:
         return list(ue_file.optional_wrappers)
 
     def _namespace_stack(self, package: str | None) -> List[str]:
+        """Return a list of namespace identifiers for the given protobuf package."""
+
         if not package:
             return []
-        return package.split(".")
+
+        segments: List[str] = []
+        for segment in package.split("."):
+            sanitized = segment.strip()
+            if not sanitized:
+                continue
+
+            # Replace characters that are not valid in a C++ identifier with underscores
+            # so that `UE_NAMESPACE_BEGIN` receives a bare identifier token. Proto package
+            # segments follow identifier rules already, but we defensively normalise here
+            # to avoid emitting tokens like ``demo.example``.
+            cleaned_chars = [
+                char if char.isalnum() or char == "_" else "_"
+                for char in sanitized
+            ]
+            cleaned = "".join(cleaned_chars)
+            if cleaned and cleaned[0].isdigit():
+                cleaned = f"_{cleaned}"
+
+            if cleaned:
+                segments.append(cleaned)
+
+        return segments
 
     def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
         return [f"UE_NAMESPACE_BEGIN({namespace})" for namespace in namespace_stack]

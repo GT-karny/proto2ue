@@ -91,6 +91,7 @@ struct FPerson {
 
 - Optional ラッパー構造体は Blueprint から直接編集可能な `bIsSet` / `Value` プロパティを持ちます。
 - `UE_NAMESPACE_BEGIN(example)` ブロックでパッケージ名がラップされ、`.cpp` 側では `RegisterGeneratedTypes` のスタブ関数が生成されます。
+- パッケージに複数のセグメントが含まれる場合 (例: `demo.example`)、それぞれのセグメントに対して `UE_NAMESPACE_BEGIN` / `UE_NAMESPACE_END` が個別に展開され、`UE_NAMESPACE_BEGIN(demo)` → `UE_NAMESPACE_BEGIN(example)` のようにネストされます。
 - `oneof` のメンバーはコメントに列挙され、追加のヘルパー生成と組み合わせることで選択状態を管理できます。
 
 ## 4. `ConvertersTemplate` で変換ヘルパーを生成
