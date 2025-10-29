@@ -190,3 +190,22 @@ def test_python_runtime_round_trip() -> None:
     )
     assert proto_message.SerializeToString() == roundtrip_proto.SerializeToString()
 
+
+def test_converters_template_emits_static_class_helpers() -> None:
+    ue_file, _ = _build_sample_components()
+    template = ConvertersTemplate(ue_file)
+    rendered = template.render()
+
+    assert "namespace Proto2UE::Converters" not in rendered.header
+    assert "namespace Proto2UE::Converters" not in rendered.source
+    assert "Internal::" not in rendered.header
+    assert "Internal::" not in rendered.source
+
+    expected_class = "FExampleProtoConv"
+    assert f"class {expected_class}" in rendered.header
+    assert f"void {expected_class}::ToProto" in rendered.source
+    assert f"bool {expected_class}::FromProto" in rendered.source
+    assert f"{expected_class}::FConversionContext" in rendered.source
+    assert f"{expected_class}::ToProtoBytes" in rendered.source
+    assert f"{expected_class}::FromProtoBytes" in rendered.source
+

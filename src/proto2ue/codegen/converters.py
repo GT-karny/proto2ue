@@ -615,33 +615,36 @@ class ConvertersTemplate:
         for include in self._dependency_converter_includes():
             lines.append(f'#include "{include}"')
         lines.append("")
-        lines.append("namespace Proto2UE::Converters {")
-        lines.append("")
-        lines.extend(self._render_internal_namespace())
-        lines.append("")
-        lines.append("struct FConversionError { FString Message; FString FieldPath; };")
-        lines.append("class FConversionContext {")
+        class_name = self._converter_class_name()
+        lines.append(f"class {class_name} {{")
         lines.append("public:")
-        lines.append("    void AddError(const FString& InFieldPath, const FString& InMessage);")
-        lines.append("    bool HasErrors() const;")
-        lines.append("    const TArray<FConversionError>& GetErrors() const;")
-        lines.append("private:")
-        lines.append("    TArray<FConversionError> Errors;")
-        lines.append("};")
+        lines.append("    struct FConversionError { FString Message; FString FieldPath; };")
+        lines.append("    class FConversionContext {")
+        lines.append("    public:")
+        lines.append("        void AddError(const FString& InFieldPath, const FString& InMessage);")
+        lines.append("        bool HasErrors() const;")
+        lines.append("        const TArray<FConversionError>& GetErrors() const;")
+        lines.append("    private:")
+        lines.append("        TArray<FConversionError> Errors;")
+        lines.append("    };")
         lines.append("")
-
         for message in self._collect_messages(self._ue_file.messages):
             ue_type = self._qualified_ue_type(message)
             proto_type = self._qualified_proto_type(message)
             lines.append(
-                f"void ToProto(const {ue_type}& Source, {proto_type}& Out, FConversionContext* Context = nullptr);"
+                "    "
+                f"static void ToProto(const {ue_type}& Source, {proto_type}& Out, FConversionContext* Context = nullptr);"
             )
             lines.append(
-                f"bool FromProto(const {proto_type}& Source, {ue_type}& Out, FConversionContext* Context = nullptr);"
+                "    "
+                f"static bool FromProto(const {proto_type}& Source, {ue_type}& Out, FConversionContext* Context = nullptr);"
             )
             lines.append("")
-
-        lines.append("}  // namespace Proto2UE::Converters")
+        lines.append("private:")
+        lines.append("    friend class UProto2UEBlueprintLibrary;")
+        lines.append("")
+        lines.extend(self._render_internal_helpers(indent="    "))
+        lines.append("};")
         lines.append("")
         lines.append("UCLASS()")
         lines.append(
@@ -683,34 +686,34 @@ class ConvertersTemplate:
         lines.append("#include <type_traits>")
         lines.append("#include <utility>")
         lines.append("")
-        lines.append("namespace Proto2UE::Converters {")
+        class_name = self._converter_class_name()
         lines.append("")
-        lines.append("void FConversionContext::AddError(const FString& InFieldPath, const FString& InMessage) {")
+        lines.append(
+            f"void {class_name}::FConversionContext::AddError(const FString& InFieldPath, const FString& InMessage) {{"
+        )
         lines.append("    Errors.Emplace(FConversionError{InMessage, InFieldPath});")
         lines.append("}")
-        lines.append("bool FConversionContext::HasErrors() const { return Errors.Num() > 0; }")
         lines.append(
-            "const TArray<FConversionError>& FConversionContext::GetErrors() const { return Errors; }"
+            f"bool {class_name}::FConversionContext::HasErrors() const {{ return Errors.Num() > 0; }}"
+        )
+        lines.append(
+            f"const TArray<{class_name}::FConversionError>& {class_name}::FConversionContext::GetErrors() const {{ return Errors; }}"
         )
         lines.append("")
-
         for message in self._collect_messages(self._ue_file.messages):
             ue_type = self._qualified_ue_type(message)
             proto_type = self._qualified_proto_type(message)
             lines.extend(
-                self._render_to_proto_function(message, ue_type, proto_type)
+                self._render_to_proto_function(class_name, message, ue_type, proto_type)
             )
             lines.append("")
             lines.extend(
-                self._render_from_proto_function(message, ue_type, proto_type)
+                self._render_from_proto_function(class_name, message, ue_type, proto_type)
             )
             lines.append("")
-
-        lines.append("}  // namespace Proto2UE::Converters")
-        lines.append("")
         lines.append("namespace {")
         lines.append(
-            "FString FormatConversionErrors(const Proto2UE::Converters::FConversionContext& Context) {"
+            f"FString FormatConversionErrors(const {class_name}::FConversionContext& Context) {{"
         )
         lines.append("    FString Combined;")
         lines.append("    const auto& Errors = Context.GetErrors();")
@@ -738,11 +741,9 @@ class ConvertersTemplate:
             lines.append(
                 f"bool UProto2UEBlueprintLibrary::{base_name}ToProtoBytes(const {ue_type}& Source, TArray<uint8>& OutBytes, FString& Error) {{"
             )
-            lines.append("    Proto2UE::Converters::FConversionContext Context;")
+            lines.append(f"    {class_name}::FConversionContext Context;")
             lines.append(f"    {proto_type} ProtoMessage;")
-            lines.append(
-                "    Proto2UE::Converters::ToProto(Source, ProtoMessage, &Context);"
-            )
+            lines.append(f"    {class_name}::ToProto(Source, ProtoMessage, &Context);")
             lines.append("    if (Context.HasErrors()) {")
             lines.append("        Error = FormatConversionErrors(Context);")
             lines.append("        return false;")
@@ -754,9 +755,7 @@ class ConvertersTemplate:
             )
             lines.append("        return false;")
             lines.append("    }")
-            lines.append(
-                "    OutBytes = Proto2UE::Converters::Internal::FromProtoBytes(Serialized);"
-            )
+            lines.append(f"    OutBytes = {class_name}::FromProtoBytes(Serialized);")
             lines.append("    Error = FString();")
             lines.append("    return true;")
             lines.append("}")
@@ -764,7 +763,9 @@ class ConvertersTemplate:
             lines.append(
                 f"bool UProto2UEBlueprintLibrary::{base_name}FromProtoBytes(const TArray<uint8>& InBytes, {ue_type}& OutData, FString& Error) {{"
             )
-            lines.append("    const std::string Serialized = Proto2UE::Converters::Internal::ToProtoBytes(InBytes);")
+            lines.append(
+                f"    const std::string Serialized = {class_name}::ToProtoBytes(InBytes);"
+            )
             lines.append(f"    {proto_type} ProtoMessage;")
             lines.append("    if (!ProtoMessage.ParseFromString(Serialized)) {")
             lines.append(
@@ -772,9 +773,9 @@ class ConvertersTemplate:
             )
             lines.append("        return false;")
             lines.append("    }")
-            lines.append("    Proto2UE::Converters::FConversionContext Context;")
+            lines.append(f"    {class_name}::FConversionContext Context;")
             lines.append(
-                "    if (!Proto2UE::Converters::FromProto(ProtoMessage, OutData, &Context)) {"
+                f"    if (!{class_name}::FromProto(ProtoMessage, OutData, &Context)) {{"
             )
             lines.append("        Error = FormatConversionErrors(Context);")
             lines.append("        return false;")
@@ -785,99 +786,100 @@ class ConvertersTemplate:
             lines.append("")
         return "\n".join(lines) + "\n"
 
-    def _render_internal_namespace(self) -> List[str]:
+    def _render_internal_helpers(self, *, indent: str) -> List[str]:
         lines: List[str] = []
-        lines.append("namespace Internal {")
-        lines.append("template <typename, typename = void>")
-        lines.append("struct THasIsSet : std::false_type {};")
-        lines.append("template <typename T>")
+        pad = indent
+        lines.append(f"{pad}template <typename, typename = void>")
+        lines.append(f"{pad}struct THasIsSet : std::false_type {{}};")
+        lines.append(f"{pad}template <typename T>")
         lines.append(
-            "struct THasIsSet<T, std::void_t<decltype(std::declval<const T&>().IsSet())>> : std::true_type {};"
+            f"{pad}struct THasIsSet<T, std::void_t<decltype(std::declval<const T&>().IsSet())>> : std::true_type {{}};"
         )
-        lines.append("template <typename, typename = void>")
-        lines.append("struct THasIsSetMember : std::false_type {};")
-        lines.append("template <typename T>")
+        lines.append(f"{pad}template <typename, typename = void>")
+        lines.append(f"{pad}struct THasIsSetMember : std::false_type {{}};")
+        lines.append(f"{pad}template <typename T>")
         lines.append(
-            "struct THasIsSetMember<T, std::void_t<decltype(std::declval<const T&>().bIsSet)>> : std::true_type {};"
+            f"{pad}struct THasIsSetMember<T, std::void_t<decltype(std::declval<const T&>().bIsSet)>> : std::true_type {{}};"
         )
-        lines.append("template <typename, typename = void>")
-        lines.append("struct THasNum : std::false_type {};")
-        lines.append("template <typename T>")
+        lines.append(f"{pad}template <typename, typename = void>")
+        lines.append(f"{pad}struct THasNum : std::false_type {{}};")
+        lines.append(f"{pad}template <typename T>")
         lines.append(
-            "struct THasNum<T, std::void_t<decltype(std::declval<const T&>().Num())>> : std::true_type {};"
+            f"{pad}struct THasNum<T, std::void_t<decltype(std::declval<const T&>().Num())>> : std::true_type {{}};"
         )
-        lines.append("template <typename, typename = void>")
-        lines.append("struct THasEquality : std::false_type {};")
-        lines.append("template <typename T>")
+        lines.append(f"{pad}template <typename, typename = void>")
+        lines.append(f"{pad}struct THasEquality : std::false_type {{}};")
+        lines.append(f"{pad}template <typename T>")
         lines.append(
-            "struct THasEquality<T, std::void_t<decltype(std::declval<const T&>() == std::declval<const T&>())>> : std::true_type {};"
+            f"{pad}struct THasEquality<T, std::void_t<decltype(std::declval<const T&>() == std::declval<const T&>())>> : std::true_type {{}};"
         )
-        lines.append("template <typename, typename = void>")
-        lines.append("struct THasGetValue : std::false_type {};")
-        lines.append("template <typename T>")
+        lines.append(f"{pad}template <typename, typename = void>")
+        lines.append(f"{pad}struct THasGetValue : std::false_type {{}};")
+        lines.append(f"{pad}template <typename T>")
         lines.append(
-            "struct THasGetValue<T, std::void_t<decltype(std::declval<const T&>().GetValue())>> : std::true_type {};"
+            f"{pad}struct THasGetValue<T, std::void_t<decltype(std::declval<const T&>().GetValue())>> : std::true_type {{}};"
         )
-        lines.append("template <typename, typename = void>")
-        lines.append("struct THasValueMember : std::false_type {};")
-        lines.append("template <typename T>")
+        lines.append(f"{pad}template <typename, typename = void>")
+        lines.append(f"{pad}struct THasValueMember : std::false_type {{}};")
+        lines.append(f"{pad}template <typename T>")
         lines.append(
-            "struct THasValueMember<T, std::void_t<decltype(std::declval<const T&>().Value)>> : std::true_type {};"
+            f"{pad}struct THasValueMember<T, std::void_t<decltype(std::declval<const T&>().Value)>> : std::true_type {{}};"
         )
-        lines.append("template <typename T>")
-        lines.append("bool IsValueProvided(const T& Value) {")
-        lines.append("    if constexpr (THasIsSet<T>::value) {")
-        lines.append("        return Value.IsSet();")
-        lines.append("    } else if constexpr (THasIsSetMember<T>::value) {")
-        lines.append("        return Value.bIsSet;")
-        lines.append("    } else if constexpr (THasNum<T>::value) {")
-        lines.append("        return Value.Num() > 0;")
-        lines.append("    } else if constexpr (std::is_pointer_v<T>) {")
-        lines.append("        return Value != nullptr;")
-        lines.append("    } else if constexpr (THasEquality<T>::value && std::is_default_constructible_v<T>) {")
-        lines.append("        return Value != T{};")
-        lines.append("    } else {")
-        lines.append("        return false;")
-        lines.append("    }")
-        lines.append("}")
-        lines.append("template <typename T>")
-        lines.append("decltype(auto) GetFieldValue(const T& Value) {")
-        lines.append("    if constexpr (THasGetValue<T>::value) {")
-        lines.append("        return Value.GetValue();")
-        lines.append("    } else if constexpr (THasValueMember<T>::value) {")
-        lines.append("        return Value.Value;")
-        lines.append("    } else {")
-        lines.append("        return Value;")
-        lines.append("    }")
-        lines.append("}")
-        lines.append("inline std::string ToProtoString(const FString& Value) {")
-        lines.append("    FTCHARToUTF8 Converter(*Value);")
-        lines.append("    return std::string(Converter.Get(), Converter.Length());")
-        lines.append("}")
-        lines.append("inline std::string ToProtoBytes(const TArray<uint8>& Value) {")
+        lines.append(f"{pad}template <typename T>")
+        lines.append(f"{pad}static bool IsValueProvided(const T& Value) {{")
+        lines.append(f"{pad}    if constexpr (THasIsSet<T>::value) {{")
+        lines.append(f"{pad}        return Value.IsSet();")
+        lines.append(f"{pad}    }} else if constexpr (THasIsSetMember<T>::value) {{")
+        lines.append(f"{pad}        return Value.bIsSet;")
+        lines.append(f"{pad}    }} else if constexpr (THasNum<T>::value) {{")
+        lines.append(f"{pad}        return Value.Num() > 0;")
+        lines.append(f"{pad}    }} else if constexpr (std::is_pointer_v<T>) {{")
+        lines.append(f"{pad}        return Value != nullptr;")
         lines.append(
-            "    return std::string(reinterpret_cast<const char*>(Value.GetData()), Value.Num());"
+            f"{pad}    }} else if constexpr (THasEquality<T>::value && std::is_default_constructible_v<T>) {{"
         )
-        lines.append("}")
-        lines.append("inline FString FromProtoString(const std::string& Value) {")
-        lines.append("    return FString(UTF8_TO_TCHAR(Value.c_str()));")
-        lines.append("}")
-        lines.append("inline TArray<uint8> FromProtoBytes(const std::string& Value) {")
-        lines.append("    TArray<uint8> Result;")
+        lines.append(f"{pad}        return Value != T{{}};")
+        lines.append(f"{pad}    }} else {{")
+        lines.append(f"{pad}        return false;")
+        lines.append(f"{pad}    }}")
+        lines.append(f"{pad}}")
+        lines.append(f"{pad}template <typename T>")
+        lines.append(f"{pad}static decltype(auto) GetFieldValue(const T& Value) {{")
+        lines.append(f"{pad}    if constexpr (THasGetValue<T>::value) {{")
+        lines.append(f"{pad}        return Value.GetValue();")
+        lines.append(f"{pad}    }} else if constexpr (THasValueMember<T>::value) {{")
+        lines.append(f"{pad}        return Value.Value;")
+        lines.append(f"{pad}    }} else {{")
+        lines.append(f"{pad}        return Value;")
+        lines.append(f"{pad}    }}")
+        lines.append(f"{pad}}")
+        lines.append(f"{pad}static std::string ToProtoString(const FString& Value) {{")
+        lines.append(f"{pad}    FTCHARToUTF8 Converter(*Value);")
+        lines.append(f"{pad}    return std::string(Converter.Get(), Converter.Length());")
+        lines.append(f"{pad}}")
+        lines.append(f"{pad}static std::string ToProtoBytes(const TArray<uint8>& Value) {{")
         lines.append(
-            "    Result.Append(reinterpret_cast<const uint8*>(Value.data()), Value.size());"
+            f"{pad}    return std::string(reinterpret_cast<const char*>(Value.GetData()), Value.Num());"
         )
-        lines.append("    return Result;")
-        lines.append("}")
-        lines.append("}  // namespace Internal")
+        lines.append(f"{pad}}")
+        lines.append(f"{pad}static FString FromProtoString(const std::string& Value) {{")
+        lines.append(f"{pad}    return FString(UTF8_TO_TCHAR(Value.c_str()));")
+        lines.append(f"{pad}}")
+        lines.append(f"{pad}static TArray<uint8> FromProtoBytes(const std::string& Value) {{")
+        lines.append(f"{pad}    TArray<uint8> Result;")
+        lines.append(
+            f"{pad}    Result.Append(reinterpret_cast<const uint8*>(Value.data()), Value.size());"
+        )
+        lines.append(f"{pad}    return Result;")
+        lines.append(f"{pad}}")
         return lines
 
     def _render_to_proto_function(
-        self, message: UEMessage, ue_type: str, proto_type: str
+        self, class_name: str, message: UEMessage, ue_type: str, proto_type: str
     ) -> List[str]:
         lines: List[str] = []
         lines.append(
-            f"void ToProto(const {ue_type}& Source, {proto_type}& Out, FConversionContext* Context) {{"
+            f"void {class_name}::ToProto(const {ue_type}& Source, {proto_type}& Out, FConversionContext* Context) {{"
         )
         lines.append("    Out.Clear();")
         oneof_groups = self._group_oneof_fields(message.fields)
@@ -913,9 +915,7 @@ class ConvertersTemplate:
                     lines.append(
                         f"        auto& Added = {map_container}[{key_expr}];"
                     )
-                    lines.append(
-                        "        ToProto(Kvp.Value, Added, Context);"
-                    )
+                    lines.append("        ToProto(Kvp.Value, Added, Context);")
                     lines.append("    }")
                 else:
                     lines.append(
@@ -947,9 +947,7 @@ class ConvertersTemplate:
                     lines.append(
                         f"        auto* Added = Out.add_{field_name}();"
                     )
-                    lines.append(
-                        "        ToProto(Item, *Added, Context);"
-                    )
+                    lines.append("        ToProto(Item, *Added, Context);")
                     lines.append("    }")
                 else:
                     item_expr = "Item"
@@ -964,10 +962,10 @@ class ConvertersTemplate:
             elif field.kind is model.FieldKind.MESSAGE:
                 if field.is_optional:
                     lines.append(
-                        f"    if (Internal::IsValueProvided(Source.{field.name})) {{"
+                        f"    if (IsValueProvided(Source.{field.name})) {{"
                     )
                     lines.append(
-                        f"        ToProto(Internal::GetFieldValue(Source.{field.name}), *Out.mutable_{field_name}(), Context);"
+                        f"        ToProto(GetFieldValue(Source.{field.name}), *Out.mutable_{field_name}(), Context);"
                     )
                     lines.append("    }")
                 else:
@@ -976,12 +974,8 @@ class ConvertersTemplate:
                     )
             else:
                 if field.is_optional:
-                    condition = (
-                        f"Internal::IsValueProvided(Source.{field.name})"
-                    )
-                    value_expr = (
-                        f"Internal::GetFieldValue(Source.{field.name})"
-                    )
+                    condition = f"IsValueProvided(Source.{field.name})"
+                    value_expr = f"GetFieldValue(Source.{field.name})"
                 else:
                     condition = "true"
                     value_expr = f"Source.{field.name}"
@@ -1011,7 +1005,7 @@ class ConvertersTemplate:
                 continue
             field_name = source.name
             lines.append(
-                f"        if (Internal::IsValueProvided(Source.{field.name})) {{"
+                f"        if (IsValueProvided(Source.{field.name})) {{"
             )
             lines.append(f"            if ({guard_var}) {{")
             lines.append("                if (Context) {")
@@ -1032,7 +1026,7 @@ class ConvertersTemplate:
     def _render_to_proto_oneof_assignment(
         self, field: UEField, field_name: str, *, indent: str
     ) -> List[str]:
-        value_expr = f"Internal::GetFieldValue(Source.{field.name})"
+        value_expr = f"GetFieldValue(Source.{field.name})"
         lines = [f"{indent}const auto& ActiveValue = {value_expr};"]
         if field.kind is model.FieldKind.MESSAGE:
             lines.append(
@@ -1049,11 +1043,11 @@ class ConvertersTemplate:
         return lines
 
     def _render_from_proto_function(
-        self, message: UEMessage, ue_type: str, proto_type: str
+        self, class_name: str, message: UEMessage, ue_type: str, proto_type: str
     ) -> List[str]:
         lines: List[str] = []
         lines.append(
-            f"bool FromProto(const {proto_type}& Source, {ue_type}& Out, FConversionContext* Context) {{"
+            f"bool {class_name}::FromProto(const {proto_type}& Source, {ue_type}& Out, FConversionContext* Context) {{"
         )
         lines.append("    Out = {};")
         lines.append("    bool bOk = true;")
@@ -1296,45 +1290,45 @@ class ConvertersTemplate:
     def _to_proto_value(self, field: UEField, value_expr: str) -> str:
         scalar = self._field_scalar_type(field)
         if scalar == "string":
-            return f"Internal::ToProtoString({value_expr})"
+            return f"ToProtoString({value_expr})"
         if scalar == "bytes":
-            return f"Internal::ToProtoBytes({value_expr})"
+            return f"ToProtoBytes({value_expr})"
         return value_expr
 
     def _from_proto_value(self, field: UEField, value_expr: str) -> str:
         scalar = self._field_scalar_type(field)
         if scalar == "string":
-            return f"Internal::FromProtoString({value_expr})"
+            return f"FromProtoString({value_expr})"
         if scalar == "bytes":
-            return f"Internal::FromProtoBytes({value_expr})"
+            return f"FromProtoBytes({value_expr})"
         return value_expr
 
     def _to_proto_map_key(self, field: UEField, key_expr: str) -> str:
         scalar = self._map_key_scalar_type(field)
         if scalar == "string":
-            return f"Internal::ToProtoString({key_expr})"
+            return f"ToProtoString({key_expr})"
         return key_expr
 
     def _from_proto_map_key(self, field: UEField, key_expr: str) -> str:
         scalar = self._map_key_scalar_type(field)
         if scalar == "string":
-            return f"Internal::FromProtoString({key_expr})"
+            return f"FromProtoString({key_expr})"
         return key_expr
 
     def _to_proto_map_value(self, field: UEField, value_expr: str) -> str:
         scalar = self._map_value_scalar_type(field)
         if scalar == "string":
-            return f"Internal::ToProtoString({value_expr})"
+            return f"ToProtoString({value_expr})"
         if scalar == "bytes":
-            return f"Internal::ToProtoBytes({value_expr})"
+            return f"ToProtoBytes({value_expr})"
         return value_expr
 
     def _from_proto_map_value(self, field: UEField, value_expr: str) -> str:
         scalar = self._map_value_scalar_type(field)
         if scalar == "string":
-            return f"Internal::FromProtoString({value_expr})"
+            return f"FromProtoString({value_expr})"
         if scalar == "bytes":
-            return f"Internal::FromProtoBytes({value_expr})"
+            return f"FromProtoBytes({value_expr})"
         return value_expr
 
     def _to_pascal_case(self, value: str) -> str:
@@ -1345,6 +1339,19 @@ class ConvertersTemplate:
         for message in messages:
             yield message
             yield from self._collect_messages(message.nested_messages)
+
+    def _converter_class_name(self) -> str:
+        package = self._ue_file.package or ""
+        if package:
+            parts = [self._to_pascal_case(part) for part in package.split(".") if part]
+            base = "".join(parts)
+        else:
+            base_name = self._base_name().replace("\\", "/")
+            leaf = base_name.rsplit("/", maxsplit=1)[-1]
+            base = self._to_pascal_case(leaf)
+        if not base:
+            base = "Proto"
+        return f"F{base}ProtoConv"
 
     def _qualified_proto_type(self, message: UEMessage) -> str:
         if not message.source:
@@ -1381,15 +1388,10 @@ class ConvertersTemplate:
         return "::".join(stripped.split("."))
 
     def _qualified_ue_type(self, message: UEMessage) -> str:
-        namespace = self._ue_namespace()
-        if namespace:
-            return f"{namespace}::{message.ue_name}"
         return message.ue_name
 
     def _ue_namespace(self) -> str:
-        if not self._ue_file.package:
-            return ""
-        return "::".join(self._ue_file.package.split("."))
+        return ""
 
     def _generated_header_name(self) -> str:
         base = self._base_name()
