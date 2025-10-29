@@ -123,7 +123,7 @@ protoc \
 - `Intermediate/Proto2UE/examples/example/person.proto2ue.h`
 - `Intermediate/Proto2UE/examples/example/person.proto2ue.cpp`
 
-ヘッダーファイルには `FProtoOptional*` 構造体 (proto2 の `optional` / `oneof` を Blueprint 互換にするラッパー) や `UE_NAMESPACE_BEGIN(example)` が含まれます。詳細は [基本ワークフロー・チュートリアル](tutorials/basic-workflow.md) を参照してください。
+ヘッダーファイルには `FProtoOptional*` 構造体 (proto2 の `optional` / `oneof` を Blueprint 互換にするラッパー) や `namespace example { ... }` ブロックが含まれます。詳細は [基本ワークフロー・チュートリアル](tutorials/basic-workflow.md) を参照してください。
 
 ## 4. 変換ヘルパー (`ConvertersTemplate`) の生成
 

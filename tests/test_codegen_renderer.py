@@ -160,10 +160,10 @@ def test_default_renderer_outputs_golden_files() -> None:
     header_output = files["example/person.proto2ue.h"]
     source_output = files["example/person.proto2ue.cpp"]
 
-    assert "UE_NAMESPACE_BEGIN(example)" in header_output
-    assert "UE_NAMESPACE_END(example)" in header_output
-    assert "UE_NAMESPACE_BEGIN(example)" in source_output
-    assert "UE_NAMESPACE_END(example)" in source_output
+    assert "namespace example {" in header_output
+    assert "}  // namespace example" in header_output
+    assert "namespace example {" in source_output
+    assert "}  // namespace example" in source_output
 
     golden_dir = Path(__file__).parent / "golden"
     header_golden = (golden_dir / "example" / "person.proto2ue.h").read_text()
@@ -191,27 +191,35 @@ def test_renderer_splits_namespace_segments() -> None:
     source_output = files["demo/example.proto2ue.cpp"]
 
     header_begin = [
-        line for line in header_output.splitlines() if line.startswith("UE_NAMESPACE_BEGIN")
+        line
+        for line in header_output.splitlines()
+        if line.lstrip().startswith("namespace ")
     ]
     header_end = [
-        line for line in header_output.splitlines() if line.startswith("UE_NAMESPACE_END")
+        line
+        for line in header_output.splitlines()
+        if line.strip().startswith("}  // namespace")
     ]
 
     assert header_begin == [
-        "UE_NAMESPACE_BEGIN(demo)",
-        "UE_NAMESPACE_BEGIN(example)",
+        "namespace demo {",
+        "    namespace example {",
     ]
     assert header_end == [
-        "UE_NAMESPACE_END(example)",
-        "UE_NAMESPACE_END(demo)",
+        "    }  // namespace example",
+        "}  // namespace demo",
     ]
     assert all("." not in line for line in header_begin + header_end)
 
     source_begin = [
-        line for line in source_output.splitlines() if line.startswith("UE_NAMESPACE_BEGIN")
+        line
+        for line in source_output.splitlines()
+        if line.lstrip().startswith("namespace ")
     ]
     source_end = [
-        line for line in source_output.splitlines() if line.startswith("UE_NAMESPACE_END")
+        line
+        for line in source_output.splitlines()
+        if line.strip().startswith("}  // namespace")
     ]
 
     assert source_begin == header_begin
