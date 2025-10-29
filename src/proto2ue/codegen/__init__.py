@@ -67,20 +67,22 @@ class DefaultTemplateRenderer:
         lines.append("")
         lines.append('#include "CoreMinimal.h"')
         generated_include = self._generated_header_include(header_name)
-        if generated_include is not None:
-            lines.append(f'#include "{generated_include}"')
-        lines.append("")
-
         namespace_stack = self._namespace_stack(ue_file.package)
+
         if namespace_stack:
+            lines.append("")
             lines.extend(self._begin_ue_namespaces(namespace_stack))
+
+        if generated_include is not None:
+            if namespace_stack:
+                lines.append("")
+            lines.append(f'#include "{generated_include}"')
+
+        lines.append("")
 
         enums = self._collect_enums(ue_file)
         messages = self._collect_messages(ue_file)
         has_types = bool(enums or messages)
-
-        if namespace_stack and has_types:
-            lines.append("")
 
         for enum in enums:
             lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
