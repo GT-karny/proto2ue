@@ -105,10 +105,6 @@ class DefaultTemplateRenderer:
         lines.append('#include "CoreMinimal.h"')
         generated_include = self._generated_header_include(header_name)
         dependency_includes = self._dependency_includes(ue_file)
-        namespace_stack = self._namespace_stack(ue_file.package)
-
-        if namespace_stack:
-            lines.append("")
 
         include_block: List[str] = []
         include_block.extend(f'#include "{include}"' for include in dependency_includes)
@@ -116,21 +112,16 @@ class DefaultTemplateRenderer:
             include_block.append(f'#include "{generated_include}"')
 
         if include_block:
-            if namespace_stack:
-                lines.append("")
-            lines.extend(include_block)
-
-        namespace_stack = self._namespace_stack(ue_file.package)
-        if namespace_stack:
-            lines.extend(self._begin_ue_namespaces(namespace_stack))
             lines.append("")
+            lines.extend(include_block)
 
         enums = self._collect_enums(ue_file)
         messages = self._collect_messages(ue_file)
-        has_types = bool(enums or messages)
 
         for enum in enums:
-            lines.extend(self._render_enum(enum, indent_level=len(namespace_stack)))
+            if lines and lines[-1] != "":
+                lines.append("")
+            lines.extend(self._render_enum(enum, indent_level=0))
             lines.append("")
 
         # fmt: off
@@ -157,9 +148,9 @@ class DefaultTemplateRenderer:
                     "Optional wrapper emitted before base message definition: "
                     f"{wrapper.ue_name} depends on {base_type}"
                 )
-            lines.extend(
-                self._render_optional_wrapper(wrapper, indent_level=len(namespace_stack))
-            )
+            if lines and lines[-1] != "":
+                lines.append("")
+            lines.extend(self._render_optional_wrapper(wrapper, indent_level=0))
             lines.append("")
             rendered_wrappers.add(wrapper_id)
 
@@ -183,12 +174,14 @@ class DefaultTemplateRenderer:
                     continue
                 emit_wrapper(wrapper, current_message=message.ue_name)
 
-            lines.extend(self._render_message(message, indent_level=len(namespace_stack)))
+            if lines and lines[-1] != "":
+                lines.append("")
+            lines.extend(self._render_message(message, indent_level=0))
             rendered_messages.add(message.ue_name)
 
             for wrapper in deferred_wrappers:
                 emit_wrapper(wrapper)
-            if idx != len(messages) - 1:
+            if idx != len(messages) - 1 and lines and lines[-1] != "":
                 lines.append("")
 
         for wrapper in optional_wrappers:
@@ -196,10 +189,8 @@ class DefaultTemplateRenderer:
                 emit_wrapper(wrapper)
         # fmt: on
 
-        if namespace_stack:
-            if has_types:
-                lines.append("")
-            lines.extend(self._end_ue_namespaces(namespace_stack))
+        while lines and lines[-1] == "":
+            lines.pop()
 
         return "\n".join(lines) + "\n"
 
@@ -231,19 +222,7 @@ class DefaultTemplateRenderer:
         lines.append(f'#include "{header_name}"')
         lines.append("")
 
-        namespace_stack = self._namespace_stack(ue_file.package)
-        if namespace_stack:
-            lines.extend(self._begin_ue_namespaces(namespace_stack))
-            lines.append("")
-
-        indent = self._indent_for_namespace(namespace_stack)
-        lines.append(f"{indent}namespace proto2ue {{")
-        lines.append(f"{indent}    void {registration_symbol}() {{}}")
-        lines.append(f"{indent}}}  // namespace proto2ue")
-
-        if namespace_stack:
-            lines.append("")
-            lines.extend(self._end_ue_namespaces(namespace_stack))
+        lines.append(f"void {registration_symbol}() {{}}")
 
         return "\n".join(lines) + "\n"
 
@@ -571,47 +550,6 @@ class DefaultTemplateRenderer:
         self, ue_file: UEProtoFile
     ) -> List[UEOptionalWrapper]:
         return list(ue_file.optional_wrappers)
-
-    def _namespace_stack(self, package: str | None) -> List[str]:
-        """Return a list of namespace identifiers for the given protobuf package."""
-
-        if not package:
-            return []
-
-        segments: List[str] = []
-        for segment in package.split("."):
-            sanitized = segment.strip()
-            if not sanitized:
-                continue
-
-            # Replace characters that are not valid in a C++ identifier with underscores
-            # so that `UE_NAMESPACE_BEGIN` receives a bare identifier token. Proto package
-            # segments follow identifier rules already, but we defensively normalise here
-            # to avoid emitting tokens like ``demo.example``.
-            cleaned_chars = [
-                char if char.isalnum() or char == "_" else "_"
-                for char in sanitized
-            ]
-            cleaned = "".join(cleaned_chars)
-            if cleaned and cleaned[0].isdigit():
-                cleaned = f"_{cleaned}"
-
-            if cleaned:
-                segments.append(cleaned)
-
-        return segments
-
-    def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        return [f"UE_NAMESPACE_BEGIN({namespace})" for namespace in namespace_stack]
-
-    def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        return [
-            f"UE_NAMESPACE_END({namespace})" for namespace in reversed(namespace_stack)
-        ]
-
-    def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
-        return "    " * len(namespace_stack)
-
 
 __all__ = [
     "DefaultTemplateRenderer",
