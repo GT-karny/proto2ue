@@ -71,3 +71,10 @@ def test_main_defaults_to_all_targets(tmp_path: Path, capsys: pytest.CaptureFixt
 
     assert (output_dir / Path(str(header_rel))).exists()
     assert (output_dir / Path(str(source_rel))).exists()
+
+
+def test_converter_output_path_avoids_collisions() -> None:
+    first = converter_output_path("demo/foo.bar.proto", "_proto2ue_converters.h")
+    second = converter_output_path("demo/foo_bar.proto", "_proto2ue_converters.h")
+
+    assert first != second

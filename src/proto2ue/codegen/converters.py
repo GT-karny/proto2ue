@@ -21,9 +21,9 @@ def converter_output_path(proto_name: str, suffix: str) -> PurePosixPath:
         base = normalized
 
     base_path = PurePosixPath(base)
-    sanitized_leaf = base_path.name.replace(".", "_")
-    sanitized_path = base_path.with_name(sanitized_leaf)
-    return PurePosixPath(f"{sanitized_path}{suffix}")
+    raw_target = f"{base_path}{suffix}"
+    sanitized = sanitize_generated_filename(raw_target)
+    return PurePosixPath(sanitized)
 
 
 @dataclass(frozen=True, slots=True)
