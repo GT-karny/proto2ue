@@ -843,7 +843,7 @@ class ConvertersTemplate:
         lines.append(f"{pad}    }} else {{")
         lines.append(f"{pad}        return false;")
         lines.append(f"{pad}    }}")
-        lines.append(f"{pad}}")
+        lines.append(f"{pad}}}")
         lines.append(f"{pad}template <typename T>")
         lines.append(f"{pad}static decltype(auto) GetFieldValue(const T& Value) {{")
         lines.append(f"{pad}    if constexpr (THasGetValue<T>::value) {{")
@@ -853,26 +853,26 @@ class ConvertersTemplate:
         lines.append(f"{pad}    }} else {{")
         lines.append(f"{pad}        return Value;")
         lines.append(f"{pad}    }}")
-        lines.append(f"{pad}}")
+        lines.append(f"{pad}}}")
         lines.append(f"{pad}static std::string ToProtoString(const FString& Value) {{")
         lines.append(f"{pad}    FTCHARToUTF8 Converter(*Value);")
         lines.append(f"{pad}    return std::string(Converter.Get(), Converter.Length());")
-        lines.append(f"{pad}}")
+        lines.append(f"{pad}}}")
         lines.append(f"{pad}static std::string ToProtoBytes(const TArray<uint8>& Value) {{")
         lines.append(
             f"{pad}    return std::string(reinterpret_cast<const char*>(Value.GetData()), Value.Num());"
         )
-        lines.append(f"{pad}}")
+        lines.append(f"{pad}}}")
         lines.append(f"{pad}static FString FromProtoString(const std::string& Value) {{")
         lines.append(f"{pad}    return FString(UTF8_TO_TCHAR(Value.c_str()));")
-        lines.append(f"{pad}}")
+        lines.append(f"{pad}}}")
         lines.append(f"{pad}static TArray<uint8> FromProtoBytes(const std::string& Value) {{")
         lines.append(f"{pad}    TArray<uint8> Result;")
         lines.append(
             f"{pad}    Result.Append(reinterpret_cast<const uint8*>(Value.data()), Value.size());"
         )
         lines.append(f"{pad}    return Result;")
-        lines.append(f"{pad}}")
+        lines.append(f"{pad}}}")
         return lines
 
     def _render_to_proto_function(
