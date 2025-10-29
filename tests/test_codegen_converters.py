@@ -209,3 +209,6 @@ def test_converters_template_emits_static_class_helpers() -> None:
     assert f"{expected_class}::ToProtoBytes" in rendered.source
     assert f"{expected_class}::FromProtoBytes" in rendered.source
 
+    assert '#include "example/person_proto2ue_converters.h"' in rendered.source
+    assert '#include "example/person_proto2ue_converters.generated.h"' in rendered.header
+

@@ -19,7 +19,7 @@
 - **C++ 標準**: C++20 (MSVC `/std:c++20`, Clang `-std=c++20`).
 - **モジュール依存**:
   - 生成コード (`.proto2ue.h/.cpp`): `Core`, `CoreUObject`, `Engine`。
-  - コンバーター (`.proto2ue_converters.*`): 上記に加えて `Projects`, `google::protobuf` ランタイム。Blueprint 呼び出しには `Kismet/BlueprintFunctionLibrary.h` を含める。
+  - コンバーター (`_proto2ue_converters.*`): 上記に加えて `Projects`, `google::protobuf` ランタイム。Blueprint 呼び出しには `Kismet/BlueprintFunctionLibrary.h` を含める。
 - **必要ヘッダー**:
   - スケルトン: `CoreMinimal.h`, `Containers/Array.h`, `Containers/Map.h`。
   - コンバーター: `#include "Kismet/BlueprintFunctionLibrary.h"`, `#include "google/protobuf/message.h"`, `#include <string>`, `<type_traits>`, `<utility>`。
@@ -30,7 +30,7 @@
 1. **生成ヘッダー/ソース** (`.proto2ue.h/.cpp`)
    - `PublicIncludePaths` へ `Intermediate/Proto2UE` を追加。
    - `UHT` が処理できるよう、`ModuleRules` で `bLegacyPublicIncludePaths = false` を維持。
-2. **コンバーター** (`.proto2ue_converters.h/.cpp`)
+2. **コンバーター** (`_proto2ue_converters.h/.cpp`)
    - `UProto2UEBlueprintLibrary` を `PublicDependencyModuleNames` に追加し Blueprint から呼び出し可能にする。
    - `RuntimeDependencies.Add("$(BinaryOutputDir)/proto2ue/*.pb")` で descriptor set をパッケージング (将来の差分検出に使用)。
 3. **Python プラグイン**

@@ -96,7 +96,7 @@ struct FPerson {
 
 ## 4. `ConvertersTemplate` で変換ヘルパーを生成
 
-`ConvertersTemplate` を利用すると、上記の UE 構造体と protobuf メッセージをシリアライズ／デシリアライズする C++ 関数群と Blueprint ライブラリを生成できます。Python 実装の `PythonConvertersRuntime` を使うと、C++ をビルドする前に変換ロジックを検証できます。また、descriptor set をまとめて処理したい場合は `python -m proto2ue.tools.converter` CLI を使うと `.proto2ue_converters.{h,cpp}` の出力を自動化できます。
+`ConvertersTemplate` を利用すると、上記の UE 構造体と protobuf メッセージをシリアライズ／デシリアライズする C++ 関数群と Blueprint ライブラリを生成できます。Python 実装の `PythonConvertersRuntime` を使うと、C++ をビルドする前に変換ロジックを検証できます。また、descriptor set をまとめて処理したい場合は `python -m proto2ue.tools.converter` CLI を使うと `_proto2ue_converters.{h,cpp}` の出力を自動化できます。
 
 ```python
 from proto2ue.codegen.converters import ConvertersTemplate

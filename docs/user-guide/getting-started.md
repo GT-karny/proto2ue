@@ -133,7 +133,7 @@ protoc \
 
 ## 4. 変換ヘルパー (`ConvertersTemplate`) の生成
 
-`ConvertersTemplate` は UE 構造体と protobuf メッセージ間の変換関数、エラー収集クラス (`FConversionContext`)、Blueprint から利用可能なシリアライズ API (`UProto2UEBlueprintLibrary`) を生成します。現状は Python から明示的に呼び出して `.proto2ue_converters.{h,cpp}` を出力します。先ほど生成した descriptor set (`Intermediate/Proto2UE/person.pb`) を使ってロードします。
+`ConvertersTemplate` は UE 構造体と protobuf メッセージ間の変換関数、エラー収集クラス (`FConversionContext`)、Blueprint から利用可能なシリアライズ API (`UProto2UEBlueprintLibrary`) を生成します。現状は Python から明示的に呼び出して `_proto2ue_converters.{h,cpp}` を出力します。先ほど生成した descriptor set (`Intermediate/Proto2UE/person.pb`) を使ってロードします。
 
 ```python
 from pathlib import Path
@@ -142,7 +142,7 @@ from google.protobuf.compiler import plugin_pb2
 
 from proto2ue.descriptor_loader import DescriptorLoader
 from proto2ue.type_mapper import TypeMapper
-from proto2ue.codegen.converters import ConvertersTemplate
+from proto2ue.codegen.converters import ConvertersTemplate, converter_output_path
 
 descriptor_path = Path("Intermediate/Proto2UE/person.pb")
 descriptor_set = descriptor_pb2.FileDescriptorSet()
@@ -162,18 +162,18 @@ ue_file = TypeMapper().map_file(loader.get_file(target.name))
 rendered = ConvertersTemplate(ue_file).render()
 
 out_root = Path("Intermediate/Proto2UE")
-header_path = out_root / Path(ue_file.name).with_suffix(".proto2ue_converters.h")
-source_path = out_root / Path(ue_file.name).with_suffix(".proto2ue_converters.cpp")
+header_path = out_root / Path(str(converter_output_path(ue_file.name, "_proto2ue_converters.h")))
+source_path = out_root / Path(str(converter_output_path(ue_file.name, "_proto2ue_converters.cpp")))
 header_path.parent.mkdir(parents=True, exist_ok=True)
 header_path.write_text(rendered.header)
 source_path.write_text(rendered.source)
 ```
 
-テスト環境では `ConvertersTemplate.python_runtime()` を用いたラウンドトリップ検証が `tests/test_codegen_converters.py` に用意されています。Unreal Engine 側では `.converters.{h,cpp}` をモジュールに追加し、`Build.cs` から protobuf ランタイムへの依存を解決してください。
+テスト環境では `ConvertersTemplate.python_runtime()` を用いたラウンドトリップ検証が `tests/test_codegen_converters.py` に用意されています。Unreal Engine 側では `_proto2ue_converters.{h,cpp}` をモジュールに追加し、`Build.cs` から protobuf ランタイムへの依存を解決してください。
 
 ### CLI ショートカット (`proto2ue.tools.converter`)
 
-長めの Python スニペットを書かずに済むよう、descriptor set (`protoc --descriptor_set_out` の出力) から `.proto2ue_converters.*` を生成する CLI も用意しています。
+長めの Python スニペットを書かずに済むよう、descriptor set (`protoc --descriptor_set_out` の出力) から `_proto2ue_converters.*` を生成する CLI も用意しています。
 
 ```bash
 python -m proto2ue.tools.converter \
