@@ -12,7 +12,7 @@
 | `oneof` | ⚠️ メタデータのみ | 中間表現でケース情報を保持しコメントを出力。Optional ラッパーにより選択状態を管理。専用ラッパー構造体は未生成。 | P0 |
 | 入れ子型 (message/enum) | ✅ 実装済み | 親メッセージ内にネストした `USTRUCT` / `UENUM` を生成し、命名はパッケージ相対パスを PasalCase 化。 | P0 |
 | `enum` | ✅ 実装済み | `UENUM(BlueprintType)` で `enum class` を生成。予約語衝突時は `Proto` を挿入。 | P0 |
-| `package` | ✅ 実装済み | `UE_NAMESPACE_BEGIN(package)` / `UE_NAMESPACE_END(package)` で名前空間化。 | P1 |
+| `package` | ✅ 実装済み | `namespace package { ... }` で名前空間化 (セグメントごとにネスト)。 | P1 |
 | `map<K,V>` | ✅ 実装済み | `TMap<Key, Value>` に展開。キーは protobuf の制約に従いスカラ／enum をサポート。 | P1 |
 | 予約語回避 | ✅ 実装済み | UE の予約語テーブルを持ち、衝突時に `Proto` を挿入。 | P1 |
 | `default` 値 | ⚠️ 未マッピング | `DescriptorLoader` で値を保持するが、現在は生成コードに反映していない。Converters での初期化も未実装。 | P1 |

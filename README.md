@@ -21,7 +21,7 @@
 
 - **Descriptor 正規化**: `DescriptorLoader` が `CodeGeneratorRequest` から依存関係を検証しつつ `proto2ue.model` のデータクラスへ変換します。`map_entry` や `oneof` のリンク、カスタムオプション (`unreal.*`) を取り込みます。
 - **UE 型マッピング**: `TypeMapper` がメッセージ／列挙を UE 命名規約 (`F`/`E` プレフィックス) に沿って命名し、`optional` を Blueprint 対応のラッパー構造体として合成、`repeated`→`TArray`、`map`→`TMap` に展開します。`UPROPERTY` のメタデータや `BlueprintReadWrite`/`BlueprintReadOnly` も反映します。
-- **コード生成**: `DefaultTemplateRenderer` が proto ごとに `.proto2ue.h` / `.proto2ue.cpp` を生成し、名前空間ラッパー (`UE_NAMESPACE_BEGIN/END`) や `RegisterGeneratedTypes` スタブを出力します。
+- **コード生成**: `DefaultTemplateRenderer` が proto ごとに `.proto2ue.h` / `.proto2ue.cpp` を生成し、C++ の名前空間ブロック (`namespace <Package> { ... }`) や `RegisterGeneratedTypes` スタブを出力します。
 - **変換ヘルパー**: `ConvertersTemplate` が UE 構造体と protobuf メッセージ間の双方向変換関数、エラー収集用コンテキスト、Blueprint 向けのシリアライズ関数 (`UProto2UEBlueprintLibrary`) を生成します。Python 実装の `PythonConvertersRuntime` でテンプレート出力の挙動をテストできます。
 
 ## リポジトリ構成
@@ -82,7 +82,7 @@ pip install protobuf pytest
      example/person.proto
    ```
 
-   生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
+   生成されたヘッダーは `FProtoOptional*` ラッパーや `namespace <Package> { ... }` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
 
 5. **Unreal Engine への統合** — `Intermediate/Proto2UE` 以下を UE プロジェクトに追加し、`Build.cs` から依存ライブラリ (`google::protobuf`) を解決します。詳細な手順は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
 

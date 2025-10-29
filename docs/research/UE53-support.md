@@ -23,7 +23,7 @@
 - **必要ヘッダー**:
   - スケルトン: `CoreMinimal.h`, `Containers/Array.h`, `Containers/Map.h`。
   - コンバーター: `#include "Kismet/BlueprintFunctionLibrary.h"`, `#include "google/protobuf/message.h"`, `#include <string>`, `<type_traits>`, `<utility>`。
-- **マクロ/ビルド設定**: `PROTO2UE_WITH_PROTOBUF` のようなトグル定義を導入予定。`UE_NAMESPACE_BEGIN/END` を利用するため UE5.1 以降が必須。
+- **マクロ/ビルド設定**: `PROTO2UE_WITH_PROTOBUF` のようなトグル定義を導入予定。名前空間ラップは標準の `namespace <Package> { ... }` 構文で行うため、UE 固有マクロへの依存はない。
 
 ## プラグイン提供物と UE 側設定
 
@@ -40,6 +40,6 @@
 ## リスクとフォローアップ
 
 - Android/iOS コンパイル時の `<string>` 依存や Protobuf ランタイムの ABI を確認する必要がある。
-- UHT のバージョン差異 (5.3 vs 5.4 以降) により `UE_NAMESPACE_*` マクロが変更された場合はテンプレート更新が必要。
+- UHT のバージョン差異 (5.3 vs 5.4 以降) により `namespace` 内で追加のリフレクションコードが必要になる場合はテンプレート更新が必要。
 - `clang-format` 適用や差分書き込みの自動化は未実装のため、大規模プロジェクトでは生成ファイル数増加に注意。
 - Python プラグインを配布する際は `pyproject.toml` ベースのホイール提供を検討し、オフライン環境向けの zip 配布も要検討。

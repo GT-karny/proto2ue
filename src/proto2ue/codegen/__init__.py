@@ -585,9 +585,9 @@ class DefaultTemplateRenderer:
                 continue
 
             # Replace characters that are not valid in a C++ identifier with underscores
-            # so that `UE_NAMESPACE_BEGIN` receives a bare identifier token. Proto package
-            # segments follow identifier rules already, but we defensively normalise here
-            # to avoid emitting tokens like ``demo.example``.
+            # so that we always emit a valid namespace identifier. Proto package segments
+            # follow identifier rules already, but we defensively normalise here to avoid
+            # emitting tokens like ``demo.example``.
             cleaned_chars = [
                 char if char.isalnum() or char == "_" else "_"
                 for char in sanitized
@@ -602,12 +602,18 @@ class DefaultTemplateRenderer:
         return segments
 
     def _begin_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        return [f"UE_NAMESPACE_BEGIN({namespace})" for namespace in namespace_stack]
+        lines: List[str] = []
+        for depth, namespace in enumerate(namespace_stack):
+            indent = "    " * depth
+            lines.append(f"{indent}namespace {namespace} {{")
+        return lines
 
     def _end_ue_namespaces(self, namespace_stack: List[str]) -> List[str]:
-        return [
-            f"UE_NAMESPACE_END({namespace})" for namespace in reversed(namespace_stack)
-        ]
+        lines: List[str] = []
+        for depth, namespace in reversed(list(enumerate(namespace_stack))):
+            indent = "    " * depth
+            lines.append(f"{indent}}}  // namespace {namespace}")
+        return lines
 
     def _indent_for_namespace(self, namespace_stack: List[str]) -> str:
         return "    " * len(namespace_stack)

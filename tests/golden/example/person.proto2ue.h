@@ -9,7 +9,7 @@
 
 #include "example/person.proto2ue.generated.h"
 
-UE_NAMESPACE_BEGIN(example)
+namespace example {
 
     UENUM(BlueprintType)
     enum class EColor : int32 {
@@ -104,5 +104,5 @@ UE_NAMESPACE_BEGIN(example)
         // oneof contact: email, phone
     };
 
-UE_NAMESPACE_END(example)
+}  // namespace example
 
