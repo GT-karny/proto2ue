@@ -112,11 +112,17 @@ mkdir -p Intermediate/Proto2UE
 protoc \
   --plugin=protoc-gen-ue=protoc-gen-ue \
   --proto_path=examples \
-  --ue_out=Intermediate/Proto2UE \
+  --ue_out=convert_unsigned_for_blueprint=true:Intermediate/Proto2UE \
   --descriptor_set_out=Intermediate/Proto2UE/person.pb \
   --include_imports \
   example/person.proto
 ```
+
+`--ue_out=<options>:<out_dir>` の `<options>` には、生成時の挙動を制御するキーをカンマ (`,`)・セミコロン (`;`)・パイプ (`|`) で区切って
+指定できます。例えば Blueprint 互換の符号なし型変換を無効にしたい場合は `convert_unsigned_for_blueprint=false`、パッケージ名を UE
+側の型から除外したい場合は `include_package_in_names=false` を指定します。予約済み識別子やリネームの上書きは `reserved_identifiers_file`
+と `rename_overrides_file` でファイルを渡すこともできます。詳細なオプション一覧は [リポジトリの README](../../README.md#生成時オプシ
+ョン) を参照してください。
 
 生成される主なファイル:
 
