@@ -6,9 +6,10 @@ from contextlib import contextmanager
 from dataclasses import dataclass, field
 import os
 import re
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Mapping, Optional, Tuple
 
 from . import model
+from .naming import NameResolver, NamingRules, load_naming_rules
 
 
 @dataclass(slots=True)
@@ -114,12 +115,6 @@ class UEProtoFile:
 
 
 @dataclass(slots=True)
-class _UESymbol:
-    kind: str
-    ue_name: str
-
-
-@dataclass(slots=True)
 class UEOptionalWrapper:
     """Represents an optional wrapper struct synthesized for optional fields."""
 
@@ -152,22 +147,6 @@ class TypeMapper:
         "sint64": "int64",
     }
 
-    _RESERVED_SYMBOLS = {
-        "FVector",
-        "FVector2D",
-        "FVector3d",
-        "FVector4",
-        "FVector4d",
-        "EVector",
-        "EVector2D",
-        "EVector3d",
-        "EVector4",
-        "EVector4d",
-        "EVectorState",
-    }
-
-    _COLLISION_INSERT = "Proto"
-
     def __init__(
         self,
         *,
@@ -176,13 +155,19 @@ class TypeMapper:
         optional_wrapper: str = "FProtoOptional",
         array_wrapper: str = "TArray",
         map_wrapper: str = "TMap",
+        naming_rules: NamingRules | None = None,
+        naming_config_path: str | None = None,
+        name_overrides: Mapping[str, str] | None = None,
     ) -> None:
         self._message_prefix = message_prefix
         self._enum_prefix = enum_prefix
         self._optional_wrapper_prefix = optional_wrapper
         self._array_wrapper = array_wrapper
         self._map_wrapper = map_wrapper
-        self._symbol_table: Dict[str, _UESymbol] = {}
+        rules = naming_rules or load_naming_rules(naming_config_path)
+        if name_overrides:
+            rules = rules.with_overrides(name_overrides)
+        self._name_resolver = NameResolver(rules)
         self._package: Optional[str] = None
         self._current_optional_wrappers: Dict[str, UEOptionalWrapper] = {}
         self._current_file_suffix: Optional[str] = None
@@ -241,12 +226,10 @@ class TypeMapper:
 
     # Symbol table helpers -------------------------------------------------
     def _register_enum(self, enum: model.Enum) -> None:
-        ue_name = self._compose_type_name(self._enum_prefix, enum.full_name)
-        self._symbol_table[enum.full_name] = _UESymbol("enum", ue_name)
+        self._compose_type_name(self._enum_prefix, enum.full_name)
 
     def _register_message(self, message: model.Message) -> None:
-        ue_name = self._compose_type_name(self._message_prefix, message.full_name)
-        self._symbol_table[message.full_name] = _UESymbol("message", ue_name)
+        self._compose_type_name(self._message_prefix, message.full_name)
 
         for nested_enum in message.nested_enums:
             self._register_enum(nested_enum)
@@ -254,32 +237,10 @@ class TypeMapper:
             self._register_message(nested_message)
 
     def _compose_type_name(self, prefix: str, full_name: str) -> str:
-        existing = self._symbol_table.get(full_name)
-        if existing is not None:
-            return existing.ue_name
         relative_path = self._relative_symbol_path(full_name)
         pascal_segments = [self._to_pascal_case(segment) for segment in relative_path]
         suffix = "".join(pascal_segments)
-        return self._make_unique_type_name(prefix, suffix)
-
-    def _make_unique_type_name(self, prefix: str, suffix: str) -> str:
-        candidate = prefix + suffix
-        if self._is_name_available(candidate):
-            return candidate
-
-        base_suffix = f"{self._COLLISION_INSERT}{suffix}" if suffix else self._COLLISION_INSERT
-        attempt = 1
-        while True:
-            adjusted_suffix = base_suffix if attempt == 1 else f"{base_suffix}{attempt - 1}"
-            candidate = prefix + adjusted_suffix
-            if self._is_name_available(candidate):
-                return candidate
-            attempt += 1
-
-    def _is_name_available(self, name: str) -> bool:
-        if name in self._RESERVED_SYMBOLS:
-            return False
-        return all(symbol.ue_name != name for symbol in self._symbol_table.values())
+        return self._name_resolver.register(full_name, prefix, suffix)
 
     def _relative_symbol_path(self, full_name: str) -> List[str]:
         if not full_name:
@@ -309,10 +270,7 @@ class TypeMapper:
             full_name = type_name
         if not full_name:
             raise ValueError("Unable to resolve type without a full name")
-        symbol = self._symbol_table.get(full_name)
-        if symbol is None:
-            raise KeyError(f"Type '{full_name}' was not registered in the UE symbol table")
-        return symbol.ue_name
+        return self._name_resolver.lookup(full_name)
 
     # Conversion helpers ---------------------------------------------------
     def _convert_enum(self, enum: model.Enum) -> UEEnum:

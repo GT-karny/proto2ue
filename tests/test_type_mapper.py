@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 from proto2ue import model
 from proto2ue.type_mapper import (
     TypeMapper,
@@ -534,4 +537,62 @@ def test_type_mapper_avoids_unreal_reserved_names() -> None:
     assert container.fields[1].ue_type == "FProtoOptionalMathEProtoVectorState"
 
     assert ue_file.enums[0].ue_name == "EProtoVectorState"
+
+
+def test_type_mapper_respects_naming_overrides(tmp_path: Path) -> None:
+    config_path = tmp_path / "naming.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "reserved_symbols": [],
+                "collision_suffix": "Proto",
+                "overrides": {
+                    "custom.Vector": "FCustomVector",
+                    "custom.VectorState": "ECustomVectorState",
+                },
+            }
+        )
+    )
+
+    vector_message = model.Message(name="Vector", full_name="custom.Vector")
+    vector_state_enum = model.Enum(
+        name="VectorState",
+        full_name="custom.VectorState",
+        values=[model.EnumValue(name="VECTOR_STATE_UNKNOWN", number=0)],
+    )
+
+    field = model.Field(
+        name="vector",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.MESSAGE,
+        type_name="custom.Vector",
+        resolved_type=vector_message,
+    )
+
+    container_message = model.Message(
+        name="Container",
+        full_name="custom.Container",
+        fields=[field],
+    )
+
+    proto_file = model.ProtoFile(
+        name="custom.proto",
+        package="custom",
+        messages=[vector_message, container_message],
+        enums=[vector_state_enum],
+    )
+
+    mapper = TypeMapper(naming_config_path=str(config_path))
+    ue_file = mapper.map_file(proto_file)
+
+    message_names = {message.full_name: message.ue_name for message in ue_file.messages}
+    assert message_names["custom.Vector"] == "FCustomVector"
+    assert message_names["custom.Container"] == "FContainer"
+
+    enum_names = {enum.full_name: enum.ue_name for enum in ue_file.enums}
+    assert enum_names["custom.VectorState"] == "ECustomVectorState"
+
+    container = next(message for message in ue_file.messages if message.name == "Container")
+    assert container.fields[0].base_type == "FCustomVector"
 

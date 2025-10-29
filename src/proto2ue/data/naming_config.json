@@ -1,0 +1,17 @@
+{
+  "collision_suffix": "Proto",
+  "reserved_symbols": [
+    "FVector",
+    "FVector2D",
+    "FVector3d",
+    "FVector4",
+    "FVector4d",
+    "EVector",
+    "EVector2D",
+    "EVector3d",
+    "EVector4",
+    "EVector4d",
+    "EVectorState"
+  ],
+  "overrides": {}
+}
