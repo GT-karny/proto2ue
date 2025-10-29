@@ -180,3 +180,71 @@ def test_renderer_splits_namespace_segments() -> None:
     assert header_output.index("UE_NAMESPACE_END(example)") < header_output.index(
         "UE_NAMESPACE_END(demo)"
     )
+
+
+def _build_collision_request() -> plugin_pb2.CodeGeneratorRequest:
+    request = plugin_pb2.CodeGeneratorRequest()
+    file_proto = request.proto_file.add()
+    file_proto.name = "math/vector.proto"
+    file_proto.package = "math"
+
+    vector_message = file_proto.message_type.add()
+    vector_message.name = "Vector"
+
+    container_message = file_proto.message_type.add()
+    container_message.name = "Container"
+    vector_field = container_message.field.add()
+    vector_field.name = "vector"
+    vector_field.number = 1
+    vector_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    vector_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
+    vector_field.type_name = ".math.Vector"
+
+    request.file_to_generate.append("math/vector.proto")
+    return request
+
+
+def test_renderer_handles_reserved_name_collisions() -> None:
+    request = _build_collision_request()
+    response = generate_code(request)
+    files = {file.name: file.content for file in response.file}
+    header_output = files["math/vector.proto2ue.h"]
+
+    assert "struct FProtoVector" in header_output
+    assert "FProtoOptionalMathFProtoVector" in header_output
+
+
+def test_renderer_accepts_naming_config_parameter(tmp_path: Path) -> None:
+    config_path = tmp_path / "naming.json"
+    config_path.write_text(
+        """
+{
+  "collision_suffix": "Proto",
+  "reserved_symbols": [],
+  "overrides": {
+    "math.Vector": "FCustomVector"
+  }
+}
+""".strip()
+    )
+
+    request = _build_collision_request()
+    request.parameter = f"naming_config={config_path}"
+
+    response = generate_code(request)
+    files = {file.name: file.content for file in response.file}
+    header_output = files["math/vector.proto2ue.h"]
+
+    assert "struct FCustomVector" in header_output
+    assert "FProtoOptionalMathFCustomVector" in header_output
+
+
+def test_renderer_accepts_inline_naming_overrides() -> None:
+    request = _build_collision_request()
+    request.parameter = "naming_overrides=math.Vector:FInlineVector"
+
+    response = generate_code(request)
+    files = {file.name: file.content for file in response.file}
+    header_output = files["math/vector.proto2ue.h"]
+
+    assert "struct FInlineVector" in header_output
