@@ -13,12 +13,12 @@
 Intermediate/Proto2UE/
   ├── examples/example/person.proto2ue.h
   ├── examples/example/person.proto2ue.cpp
-  ├── examples/example/person.proto2ue_converters.h  # ConvertersTemplate で追加生成
-  ├── examples/example/person.proto2ue_converters.cpp
+  ├── examples/example/person_proto2ue_converters.h  # ConvertersTemplate で追加生成
+  ├── examples/example/person_proto2ue_converters.cpp
   └── person.pb  # descriptor_set_out
 ```
 
-`.proto2ue_converters.*` は `ConvertersTemplate` による後処理で生成する。今後テンプレートを `generate_code` に統合する場合はオプションで出し分ける。
+`_proto2ue_converters.*` は `ConvertersTemplate` による後処理で生成する。今後テンプレートを `generate_code` に統合する場合はオプションで出し分ける。
 
 ## Unreal Build Tool (UBT) 連携方針
 

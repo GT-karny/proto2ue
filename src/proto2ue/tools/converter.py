@@ -9,7 +9,7 @@ from typing import List, Sequence
 from google.protobuf import descriptor_pb2
 from google.protobuf.compiler import plugin_pb2
 
-from proto2ue.codegen.converters import ConvertersTemplate
+from proto2ue.codegen.converters import ConvertersTemplate, converter_output_path
 from proto2ue.descriptor_loader import DescriptorLoader
 from proto2ue.type_mapper import TypeMapper
 
@@ -55,7 +55,7 @@ def generate_converters(
     targets:
         Proto filenames (as understood by ``protoc``) to generate. ``None`` means "all".
     output_dir:
-        Directory that will receive the ``.proto2ue_converters.{h,cpp}`` files.
+        Directory that will receive the ``_proto2ue_converters.{h,cpp}`` files.
     """
 
     descriptor_set_path = Path(descriptor_set_path)
@@ -80,8 +80,10 @@ def generate_converters(
         template = ConvertersTemplate(ue_file)
         rendered = template.render()
 
-        header_path = output_dir / Path(ue_file.name).with_suffix(".proto2ue_converters.h")
-        source_path = output_dir / Path(ue_file.name).with_suffix(".proto2ue_converters.cpp")
+        header_rel = converter_output_path(ue_file.name, "_proto2ue_converters.h")
+        source_rel = converter_output_path(ue_file.name, "_proto2ue_converters.cpp")
+        header_path = output_dir / Path(str(header_rel))
+        source_path = output_dir / Path(str(source_rel))
         header_path.parent.mkdir(parents=True, exist_ok=True)
         header_path.write_text(rendered.header)
         source_path.write_text(rendered.source)
@@ -94,7 +96,7 @@ def generate_converters(
 def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate .proto2ue_converters.{h,cpp} files from a descriptor set produced by protoc."
+            "Generate _proto2ue_converters.{h,cpp} files from a descriptor set produced by protoc."
         )
     )
     parser.add_argument(

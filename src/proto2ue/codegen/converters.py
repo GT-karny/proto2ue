@@ -3,11 +3,27 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .. import model
 from . import sanitize_generated_filename
 from ..type_mapper import UEField, UEMessage, UEProtoFile
+
+
+def converter_output_path(proto_name: str, suffix: str) -> PurePosixPath:
+    """Return the relative output path for a generated converter artifact."""
+
+    normalized = proto_name.replace("\\", "/")
+    if normalized.endswith(".proto"):
+        base = normalized[:-6]
+    else:
+        base = normalized
+
+    base_path = PurePosixPath(base)
+    raw_target = f"{base_path}{suffix}"
+    sanitized = sanitize_generated_filename(raw_target)
+    return PurePosixPath(sanitized)
 
 
 @dataclass(frozen=True, slots=True)
@@ -615,6 +631,8 @@ class ConvertersTemplate:
         lines.append(f'#include "{proto_header_include}"')
         for include in self._dependency_converter_includes():
             lines.append(f'#include "{include}"')
+        generated_include = self._generated_converters_generated_header()
+        lines.append(f'#include "{generated_include}"')
         lines.append("")
         class_name = self._converter_class_name()
         lines.append(f"class {class_name} {{")
@@ -1406,8 +1424,13 @@ class ConvertersTemplate:
         return sanitize_generated_filename(f"{base}.proto2ue.h")
 
     def _generated_converters_header(self) -> str:
-        base = self._base_name()
-        return sanitize_generated_filename(f"{base}.proto2ue_converters.h")
+        return self._converter_output_name(self._ue_file.name, "_proto2ue_converters.h")
+
+    def _generated_converters_generated_header(self) -> str:
+        header = self._generated_converters_header()
+        if header.endswith(".h"):
+            return f"{header[:-2]}.generated.h"
+        return f"{header}.generated.h"
 
     def _proto_message_header_name(self) -> str:
         base = self._base_name()
@@ -1422,8 +1445,7 @@ class ConvertersTemplate:
         for dependency in source.dependencies:
             if dependency == source.name:
                 continue
-            base = dependency[:-6] if dependency.endswith(".proto") else dependency
-            include = sanitize_generated_filename(f"{base}.proto2ue_converters.h")
+            include = self._converter_output_name(dependency, "_proto2ue_converters.h")
             if include not in seen:
                 seen.add(include)
                 includes.append(include)
@@ -1434,6 +1456,9 @@ class ConvertersTemplate:
             return self._ue_file.name[:-6]
         return self._ue_file.name
 
+    def _converter_output_name(self, proto_name: str, suffix: str) -> str:
+        return str(converter_output_path(proto_name, suffix))
+
 
 __all__ = [
     "ConverterRenderResult",
@@ -1441,5 +1466,6 @@ __all__ = [
     "ConversionError",
     "ConvertersTemplate",
     "PythonConvertersRuntime",
+    "converter_output_path",
 ]
 

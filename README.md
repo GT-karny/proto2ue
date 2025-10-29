@@ -73,7 +73,7 @@ pip install protobuf pytest
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
-4. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`.proto2ue_converters.h/.cpp`) です。`--ue_out=<options>:<out_dir>` 形式で出力ディレクトリと生成時オプションを指定できます。
+4. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`_proto2ue_converters.h/.cpp`) です。`--ue_out=<options>:<out_dir>` 形式で出力ディレクトリと生成時オプションを指定できます。
 
     ```bash
     protoc \
@@ -82,7 +82,7 @@ pip install protobuf pytest
       example/person.proto
     ```
 
-    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出すか、`python -m proto2ue.tools.converter` で `.converters.{h,cpp}` を追生成してください。
+    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出すか、`python -m proto2ue.tools.converter` で `_proto2ue_converters.{h,cpp}` を追生成してください。
 
 ## 生成時オプション
 
