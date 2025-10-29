@@ -875,6 +875,13 @@ class ConvertersTemplate:
         lines.append(f"{pad}}}")
         return lines
 
+    def _group_oneof_fields(self, fields: Iterable[UEField]) -> Dict[str, List[UEField]]:
+        groups: Dict[str, List[UEField]] = {}
+        for field in fields:
+            if field.oneof_group:
+                groups.setdefault(field.oneof_group, []).append(field)
+        return groups
+
     def _render_to_proto_function(
         self, class_name: str, message: UEMessage, ue_type: str, proto_type: str
     ) -> List[str]:
