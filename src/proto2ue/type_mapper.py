@@ -208,6 +208,7 @@ class TypeMapper:
             previous_wrappers = self._current_optional_wrappers
             self._current_optional_wrappers = {}
             previous_file_suffix = self._current_file_suffix
+            previous_proto_file_name = self._current_proto_file_name
             self._current_file_suffix = self._sanitize_file_identifier(proto_file.name)
             previous_proto_file_name = self._current_proto_file_name
             self._current_proto_file_name = proto_file.name

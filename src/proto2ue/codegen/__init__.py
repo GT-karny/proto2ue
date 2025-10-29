@@ -30,6 +30,43 @@ class ITemplateRenderer(Protocol):
         raise NotImplementedError
 
 
+class IncludeManager:
+    """Utility class to collect and render C++ include directives."""
+
+    def __init__(self) -> None:
+        self._engine_includes: List[str] = []
+        self._project_includes: List[str] = []
+        self._system_includes: List[str] = []
+
+    def add_engine(self, include: str) -> None:
+        self._add_unique(self._engine_includes, include)
+
+    def add_project(self, include: str) -> None:
+        self._add_unique(self._project_includes, include)
+
+    def add_system(self, include: str) -> None:
+        self._add_unique(self._system_includes, include)
+
+    def render(self) -> List[str]:
+        lines: List[str] = []
+        if self._engine_includes:
+            lines.extend(f'#include "{include}"' for include in self._engine_includes)
+        if self._project_includes:
+            if lines:
+                lines.append("")
+            lines.extend(f'#include "{include}"' for include in self._project_includes)
+        if self._system_includes:
+            if lines:
+                lines.append("")
+            lines.extend(f"#include <{include}>" for include in self._system_includes)
+        return lines
+
+    def _add_unique(self, target: List[str], include: str) -> None:
+        if not include or include in target:
+            return
+        target.append(include)
+
+
 class DefaultTemplateRenderer:
     """Simple renderer that produces a header and source file per proto file."""
 
@@ -72,7 +109,6 @@ class DefaultTemplateRenderer:
 
         if namespace_stack:
             lines.append("")
-            lines.extend(self._begin_ue_namespaces(namespace_stack))
 
         include_block: List[str] = []
         include_block.extend(f'#include "{include}"' for include in dependency_includes)
@@ -84,7 +120,10 @@ class DefaultTemplateRenderer:
                 lines.append("")
             lines.extend(include_block)
 
-        lines.append("")
+        namespace_stack = self._namespace_stack(ue_file.package)
+        if namespace_stack:
+            lines.extend(self._begin_ue_namespaces(namespace_stack))
+            lines.append("")
 
         enums = self._collect_enums(ue_file)
         messages = self._collect_messages(ue_file)
@@ -370,6 +409,73 @@ class DefaultTemplateRenderer:
             seen.add(specifier)
             result.append(specifier)
         return result
+
+    def _render_header_includes(self, ue_file: UEProtoFile) -> List[str]:
+        manager = IncludeManager()
+
+        for include in self._collect_engine_includes(ue_file):
+            manager.add_engine(include)
+
+        for include in self._collect_dependency_headers(ue_file):
+            manager.add_project(include)
+
+        return manager.render()
+
+    def _collect_engine_includes(self, ue_file: UEProtoFile) -> List[str]:
+        tokens: set[str] = set()
+
+        for message in self._collect_messages(ue_file):
+            for field in message.fields:
+                tokens.add(field.base_type)
+                tokens.add(field.ue_type)
+                if field.map_key_type is not None:
+                    tokens.add(field.map_key_type)
+                if field.map_value_type is not None:
+                    tokens.add(field.map_value_type)
+        for wrapper in self._collect_optional_wrappers(ue_file):
+            tokens.add(wrapper.base_type)
+
+        includes: set[str] = {"CoreMinimal.h"}
+        for token in tokens:
+            includes.update(self._engine_includes_for_type(token))
+
+        ordered: List[str] = []
+        if "CoreMinimal.h" in includes:
+            ordered.append("CoreMinimal.h")
+            includes.remove("CoreMinimal.h")
+        ordered.extend(sorted(include for include in includes if include))
+        return ordered
+
+    def _engine_includes_for_type(self, token: Optional[str]) -> List[str]:
+        if not token:
+            return []
+        includes: set[str] = set()
+        if token.startswith("TArray"):
+            includes.add("Containers/Array.h")
+        if token.startswith("TMap"):
+            includes.add("Containers/Map.h")
+        if token.startswith("TSet"):
+            includes.add("Containers/Set.h")
+        if "FString" in token:
+            includes.add("Containers/UnrealString.h")
+        return sorted(includes)
+
+    def _collect_dependency_headers(self, ue_file: UEProtoFile) -> List[str]:
+        dependency_files: set[str] = set()
+        for message in self._collect_messages(ue_file):
+            for field in message.fields:
+                dependency_files.update(field.dependent_files)
+
+        source_file = ue_file.source.name if ue_file.source is not None else None
+        filtered = [
+            dependency
+            for dependency in dependency_files
+            if dependency and dependency != source_file
+        ]
+        return [
+            f"{self._base_name_for(dependency)}{self._header_suffix}"
+            for dependency in sorted(filtered)
+        ]
 
     def _collect_messages(self, ue_file: UEProtoFile) -> List[UEMessage]:
         collected: List[UEMessage] = []
