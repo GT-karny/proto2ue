@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from proto2ue import model
 from proto2ue.config import GeneratorConfig
 from proto2ue.type_mapper import (
@@ -617,4 +619,75 @@ def test_type_mapper_unsigned_integer_blueprint_conversion_toggle() -> None:
     assert "uint32" in default_wrappers
     assert "int32" in blueprint_wrappers
     assert "uint32" not in blueprint_wrappers
+
+
+def _build_reserved_collision_model() -> model.ProtoFile:
+    package = "physics"
+
+    vector_message = model.Message(
+        name="Vector",
+        full_name=f"{package}.Vector",
+        fields=[],
+    )
+
+    holder_field = model.Field(
+        name="vector",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.MESSAGE,
+        type_name=f"{package}.Vector",
+        resolved_type=vector_message,
+    )
+
+    holder_message = model.Message(
+        name="Holder",
+        full_name=f"{package}.Holder",
+        fields=[holder_field],
+    )
+
+    return model.ProtoFile(
+        name="physics/vector.proto",
+        package=package,
+        messages=[vector_message, holder_message],
+        enums=[],
+    )
+
+
+def test_type_mapper_renames_reserved_identifiers_from_config() -> None:
+    proto_file = _build_reserved_collision_model()
+    config = GeneratorConfig(reserved_identifiers=("FVector",))
+
+    mapper = TypeMapper(config=config)
+    ue_file = mapper.map_file(proto_file)
+
+    message_names = {message.full_name: message for message in ue_file.messages}
+    vector = message_names["physics.Vector"]
+    holder = message_names["physics.Holder"]
+
+    assert vector.ue_name == "FProtoVector"
+    assert holder.fields[0].base_type == "FProtoVector"
+
+
+def test_type_mapper_respects_rename_overrides() -> None:
+    proto_file = _build_reserved_collision_model()
+    config = GeneratorConfig(rename_overrides={"physics.Vector": "FPhysicsVector"})
+
+    mapper = TypeMapper(config=config)
+    ue_file = mapper.map_file(proto_file)
+
+    vector = next(message for message in ue_file.messages if message.name == "Vector")
+    holder = next(message for message in ue_file.messages if message.name == "Holder")
+
+    assert vector.ue_name == "FPhysicsVector"
+    assert holder.fields[0].base_type == "FPhysicsVector"
+
+
+def test_type_mapper_rejects_reserved_rename_override() -> None:
+    proto_file = _build_reserved_collision_model()
+    config = GeneratorConfig(rename_overrides={"physics.Vector": "FVector"})
+
+    mapper = TypeMapper(config=config)
+
+    with pytest.raises(ValueError):
+        mapper.map_file(proto_file)
 

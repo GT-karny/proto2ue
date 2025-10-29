@@ -222,3 +222,47 @@ def test_generate_code_converts_unsigned_when_flag_enabled() -> None:
 
     assert "int32 Value" in header_output
     assert "FProtoOptionalExampleUnsignedInt32 count" in header_output
+
+
+def _build_reserved_collision_request() -> plugin_pb2.CodeGeneratorRequest:
+    request = plugin_pb2.CodeGeneratorRequest()
+    file_proto = request.proto_file.add()
+    file_proto.name = "physics/vector.proto"
+    file_proto.package = "physics"
+
+    vector_message = file_proto.message_type.add()
+    vector_message.name = "Vector"
+    next_field = vector_message.field.add()
+    next_field.name = "next"
+    next_field.number = 1
+    next_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    next_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
+    next_field.type_name = ".physics.Vector"
+
+    request.file_to_generate.append("physics/vector.proto")
+    return request
+
+
+def test_renderer_handles_reserved_identifier_collision() -> None:
+    request = _build_reserved_collision_request()
+    response = generate_code(request)
+
+    files = {file.name: file.content for file in response.file}
+    header_output = files["physics/vector.proto2ue.h"]
+
+    assert "struct FProtoVector" in header_output
+    assert "struct FProtoOptionalPhysicsVectorFProtoVector" in header_output
+
+
+def test_renderer_respects_rename_override_parameter() -> None:
+    request = _build_reserved_collision_request()
+    request.parameter = "rename_overrides=physics.Vector:FPhysicsVector"
+
+    response = generate_code(request)
+
+    files = {file.name: file.content for file in response.file}
+    header_output = files["physics/vector.proto2ue.h"]
+
+    assert "struct FPhysicsVector" in header_output
+    assert "struct FProtoOptionalPhysicsVectorFPhysicsVector" in header_output
+    assert "struct FProtoVector" not in header_output
