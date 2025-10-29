@@ -55,7 +55,7 @@ def generate_converters(
     targets:
         Proto filenames (as understood by ``protoc``) to generate. ``None`` means "all".
     output_dir:
-        Directory that will receive the ``.proto2ue.converters.{h,cpp}`` files.
+        Directory that will receive the ``.proto2ue_converters.{h,cpp}`` files.
     """
 
     descriptor_set_path = Path(descriptor_set_path)
@@ -80,8 +80,8 @@ def generate_converters(
         template = ConvertersTemplate(ue_file)
         rendered = template.render()
 
-        header_path = output_dir / Path(ue_file.name).with_suffix(".proto2ue.converters.h")
-        source_path = output_dir / Path(ue_file.name).with_suffix(".proto2ue.converters.cpp")
+        header_path = output_dir / Path(ue_file.name).with_suffix(".proto2ue_converters.h")
+        source_path = output_dir / Path(ue_file.name).with_suffix(".proto2ue_converters.cpp")
         header_path.parent.mkdir(parents=True, exist_ok=True)
         header_path.write_text(rendered.header)
         source_path.write_text(rendered.source)
@@ -94,7 +94,7 @@ def generate_converters(
 def _build_argument_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
-            "Generate .proto2ue.converters.{h,cpp} files from a descriptor set produced by protoc."
+            "Generate .proto2ue_converters.{h,cpp} files from a descriptor set produced by protoc."
         )
     )
     parser.add_argument(
