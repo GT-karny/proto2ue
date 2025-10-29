@@ -182,7 +182,13 @@ python -m proto2ue.tools.converter \
   --out Intermediate/Proto2UE
 ```
 
-`--proto` を複数回指定すると対象ファイルを絞り込めます。省略した場合は descriptor set に含まれるすべての proto ファイルが対象です。生成されたファイルパスは標準出力に列挙されるため、CI ログや差分確認にも利用できます。
+各引数の役割は次の通りです。
+
+- 位置引数 `Intermediate/Proto2UE/person.pb` …… `protoc --descriptor_set_out` で生成した descriptor set。`--proto` を省略すると、この中に含まれるすべての proto ファイルのコンバーターが出力対象になります。
+- `--proto` …… 変換したい proto ファイルパス。複数回指定でき、descriptor set 内で名前が一致したものだけを選択的に出力します。
+- `--out` …… `.proto2ue_converters.{h,cpp}` を配置するディレクトリ。既存のコード生成結果 (`.proto2ue.{h,cpp}`) と同じルート配下にまとめておくと、Unreal Engine プロジェクトへの取り込みが容易です。
+
+`--proto` を複数回指定すると対象ファイルを絞り込めます。省略した場合は descriptor set に含まれるすべての proto ファイルが対象です。実行後は生成されたファイルパスが標準出力に列挙されるため、CI ログや差分確認にも利用できます。
 
 ## 5. Unreal Engine プロジェクトへの組み込み
 
