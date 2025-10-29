@@ -61,6 +61,7 @@ class UEField:
     category: Optional[str] = None
     source: model.Field | None = None
     optional_wrapper: "UEOptionalWrapper" | None = None
+    dependent_files: List[str] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -186,6 +187,8 @@ class TypeMapper:
         self._package: Optional[str] = None
         self._current_optional_wrappers: Dict[str, UEOptionalWrapper] = {}
         self._current_file_suffix: Optional[str] = None
+        self._current_proto_file_name: Optional[str] = None
+        self._type_file_index: Dict[int, str] = {}
 
     def register_files(self, proto_files: Iterable[model.ProtoFile]) -> None:
         """Register symbols for the provided proto files."""
@@ -198,9 +201,9 @@ class TypeMapper:
 
         with self._package_scope(proto_file.package):
             for enum in proto_file.enums:
-                self._register_enum(enum)
+                self._register_enum(enum, file_name=proto_file.name)
             for message in proto_file.messages:
-                self._register_message(message)
+                self._register_message(message, file_name=proto_file.name)
 
     def map_file(self, proto_file: model.ProtoFile) -> UEProtoFile:
         """Convert a :class:`model.ProtoFile` into :class:`UEProtoFile`."""
@@ -212,7 +215,9 @@ class TypeMapper:
             previous_wrappers = self._current_optional_wrappers
             self._current_optional_wrappers = {}
             previous_file_suffix = self._current_file_suffix
+            previous_proto_file_name = self._current_proto_file_name
             self._current_file_suffix = self._sanitize_file_identifier(proto_file.name)
+            self._current_proto_file_name = proto_file.name
             try:
                 messages = [self._convert_message(message) for message in proto_file.messages]
                 enums = [self._convert_enum(enum) for enum in proto_file.enums]
@@ -220,6 +225,7 @@ class TypeMapper:
             finally:
                 self._current_optional_wrappers = previous_wrappers
                 self._current_file_suffix = previous_file_suffix
+                self._current_proto_file_name = previous_proto_file_name
 
         return UEProtoFile(
             name=proto_file.name,
@@ -240,18 +246,20 @@ class TypeMapper:
             self._package = previous
 
     # Symbol table helpers -------------------------------------------------
-    def _register_enum(self, enum: model.Enum) -> None:
+    def _register_enum(self, enum: model.Enum, *, file_name: str) -> None:
         ue_name = self._compose_type_name(self._enum_prefix, enum.full_name)
         self._symbol_table[enum.full_name] = _UESymbol("enum", ue_name)
+        self._type_file_index[id(enum)] = file_name
 
-    def _register_message(self, message: model.Message) -> None:
+    def _register_message(self, message: model.Message, *, file_name: str) -> None:
         ue_name = self._compose_type_name(self._message_prefix, message.full_name)
         self._symbol_table[message.full_name] = _UESymbol("message", ue_name)
+        self._type_file_index[id(message)] = file_name
 
         for nested_enum in message.nested_enums:
-            self._register_enum(nested_enum)
+            self._register_enum(nested_enum, file_name=file_name)
         for nested_message in message.nested_messages:
-            self._register_message(nested_message)
+            self._register_message(nested_message, file_name=file_name)
 
     def _compose_type_name(self, prefix: str, full_name: str) -> str:
         existing = self._symbol_table.get(full_name)
@@ -412,6 +420,7 @@ class TypeMapper:
             is_optional = False
             is_repeated = False
             is_map = True
+            dependent_files = self._collect_map_dependencies(field)
         else:
             base_type = self._base_type_for_field(field)
             is_map = False
@@ -426,6 +435,7 @@ class TypeMapper:
             container = None
             ue_type = base_type
             optional_wrapper: UEOptionalWrapper | None = None
+            dependent_files = self._collect_field_dependencies(field)
             if is_repeated:
                 ue_type = f"{self._array_wrapper}<{base_type}>"
                 container = self._array_wrapper
@@ -462,7 +472,38 @@ class TypeMapper:
             category=category,
             source=field,
             optional_wrapper=optional_wrapper if is_optional else None,
+            dependent_files=sorted(dependent_files),
         )
+
+    def _collect_field_dependencies(self, field: model.Field) -> set[str]:
+        dependencies: set[str] = set()
+        if field.kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
+            resolved = field.resolved_type
+            dependency = self._dependency_file_for(resolved)
+            if dependency:
+                dependencies.add(dependency)
+        return dependencies
+
+    def _collect_map_dependencies(self, field: model.Field) -> set[str]:
+        dependencies: set[str] = set()
+        map_entry = field.map_entry
+        if map_entry is None:
+            return dependencies
+        dependency = self._dependency_file_for(map_entry.key_resolved_type)
+        if dependency:
+            dependencies.add(dependency)
+        dependency = self._dependency_file_for(map_entry.value_resolved_type)
+        if dependency:
+            dependencies.add(dependency)
+        return dependencies
+
+    def _dependency_file_for(self, proto_type: model.ProtoType | None) -> Optional[str]:
+        if proto_type is None:
+            return None
+        dependency = self._type_file_index.get(id(proto_type))
+        if not dependency or dependency == self._current_proto_file_name:
+            return None
+        return dependency
 
     def _base_type_for_field(self, field: model.Field) -> str:
         if field.kind is model.FieldKind.SCALAR:

@@ -180,3 +180,45 @@ def test_renderer_splits_namespace_segments() -> None:
     assert header_output.index("UE_NAMESPACE_END(example)") < header_output.index(
         "UE_NAMESPACE_END(demo)"
     )
+
+
+def test_renderer_includes_cross_file_dependencies() -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+
+    address_file = request.proto_file.add()
+    address_file.name = "common/address.proto"
+    address_file.package = "common"
+
+    address_message = address_file.message_type.add()
+    address_message.name = "Address"
+    line1_field = address_message.field.add()
+    line1_field.name = "line1"
+    line1_field.number = 1
+    line1_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    line1_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+
+    person_file = request.proto_file.add()
+    person_file.name = "example/person.proto"
+    person_file.package = "example"
+    person_file.dependency.append("common/address.proto")
+
+    person_message = person_file.message_type.add()
+    person_message.name = "Person"
+    address_field = person_message.field.add()
+    address_field.name = "home_address"
+    address_field.number = 1
+    address_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    address_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
+    address_field.type_name = ".common.Address"
+
+    request.file_to_generate.append("example/person.proto")
+
+    response = generate_code(request)
+    files = {file.name: file.content for file in response.file}
+    header_output = files["example/person.proto2ue.h"]
+
+    dependency_include = '#include "common/address.proto2ue.h"'
+    assert dependency_include in header_output
+    assert header_output.index(dependency_include) < header_output.index(
+        '#include "example/person.proto2ue.generated.h"'
+    )
