@@ -641,6 +641,8 @@ class ConvertersTemplate:
             )
             lines.append("")
         lines.append("private:")
+        lines.append("    friend class UProto2UEBlueprintLibrary;")
+        lines.append("")
         lines.extend(self._render_internal_helpers(indent="    "))
         lines.append("};")
         lines.append("")
