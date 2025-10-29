@@ -9,6 +9,7 @@ pytest.importorskip("google.protobuf")
 from google.protobuf import descriptor_pb2
 from google.protobuf.compiler import plugin_pb2
 
+from proto2ue.codegen import sanitize_generated_filename
 from proto2ue.plugin import generate_code
 
 
@@ -152,13 +153,12 @@ def test_default_renderer_outputs_golden_files() -> None:
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    assert set(files) == {
-        "example/person.proto2ue.h",
-        "example/person.proto2ue.cpp",
-    }
+    person_header = sanitize_generated_filename("example/person.proto2ue.h")
+    person_source = sanitize_generated_filename("example/person.proto2ue.cpp")
+    assert set(files) == {person_header, person_source}
 
-    header_output = files["example/person.proto2ue.h"]
-    source_output = files["example/person.proto2ue.cpp"]
+    header_output = files[person_header]
+    source_output = files[person_source]
 
     assert "UE_NAMESPACE_BEGIN(" not in header_output
     assert "UE_NAMESPACE_END(" not in header_output
@@ -166,8 +166,12 @@ def test_default_renderer_outputs_golden_files() -> None:
     assert "UE_NAMESPACE_END(" not in source_output
 
     golden_dir = Path(__file__).parent / "golden"
-    header_golden = (golden_dir / "example" / "person.proto2ue.h").read_text()
-    source_golden = (golden_dir / "example" / "person.proto2ue.cpp").read_text()
+    header_golden = (
+        golden_dir / "example" / person_header.rsplit("/", 1)[-1]
+    ).read_text()
+    source_golden = (
+        golden_dir / "example" / person_source.rsplit("/", 1)[-1]
+    ).read_text()
 
     assert header_output == header_golden
     assert source_output == source_golden
@@ -187,8 +191,10 @@ def test_renderer_splits_namespace_segments() -> None:
     response = generate_code(request)
     files = {file.name: file.content for file in response.file}
 
-    header_output = files["demo/example.proto2ue.h"]
-    source_output = files["demo/example.proto2ue.cpp"]
+    example_header = sanitize_generated_filename("demo/example.proto2ue.h")
+    example_source = sanitize_generated_filename("demo/example.proto2ue.cpp")
+    header_output = files[example_header]
+    source_output = files[example_source]
 
     assert "UE_NAMESPACE_BEGIN(" not in header_output
     assert "UE_NAMESPACE_END(" not in header_output
@@ -200,12 +206,92 @@ def test_renderer_splits_namespace_segments() -> None:
     assert "RegisterGeneratedTypes_demo/example" not in source_output
 
 
+def test_renderer_sanitizes_generated_filenames() -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+
+    dependency_proto = request.proto_file.add()
+    dependency_proto.name = "demo/dependency.file.proto"
+    dependency_proto.package = "demo"
+    dependency_message = dependency_proto.message_type.add()
+    dependency_message.name = "DependencyMessage"
+
+    file_proto = request.proto_file.add()
+    file_proto.name = "demo/widget.config.proto"
+    file_proto.package = "demo"
+    file_proto.dependency.append("demo/dependency.file.proto")
+
+    widget_message = file_proto.message_type.add()
+    widget_message.name = "Widget"
+    dep_field = widget_message.field.add()
+    dep_field.name = "dependency"
+    dep_field.number = 1
+    dep_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    dep_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
+    dep_field.type_name = ".demo.DependencyMessage"
+
+    request.file_to_generate.append("demo/widget.config.proto")
+
+    response = generate_code(request)
+    files = {file.name: file.content for file in response.file}
+
+    widget_header = sanitize_generated_filename("demo/widget.config.proto2ue.h")
+    widget_source = sanitize_generated_filename("demo/widget.config.proto2ue.cpp")
+    dependency_header = sanitize_generated_filename("demo/dependency.file.proto2ue.h")
+    expected_names = {widget_header, widget_source}
+    assert set(files) == expected_names
+
+    header_output = files[widget_header]
+    assert f'#include "{dependency_header}"' in header_output
+    assert f'#include "{widget_header[:-2]}.generated.h"' in header_output
+
+    for name in files:
+        component = name.rsplit("/", 1)[-1]
+        if "." in component:
+            base = component[: component.rfind(".")]
+        else:
+            base = component
+        assert base
+        assert all(ch.isalnum() or ch == "_" for ch in base)
+
+
+def test_renderer_disambiguates_colliding_sanitized_filenames() -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+
+    first = request.proto_file.add()
+    first.name = "demo/foo-bar.proto"
+    first.package = "demo"
+    first.message_type.add().name = "Foo"
+
+    second = request.proto_file.add()
+    second.name = "demo/foo.bar.proto"
+    second.package = "demo"
+    second.message_type.add().name = "Bar"
+
+    request.file_to_generate.extend(["demo/foo-bar.proto", "demo/foo.bar.proto"])
+
+    response = generate_code(request)
+    files = {file.name for file in response.file}
+
+    first_header = sanitize_generated_filename("demo/foo-bar.proto2ue.h")
+    second_header = sanitize_generated_filename("demo/foo.bar.proto2ue.h")
+    first_source = sanitize_generated_filename("demo/foo-bar.proto2ue.cpp")
+    second_source = sanitize_generated_filename("demo/foo.bar.proto2ue.cpp")
+
+    assert first_header in files
+    assert first_source in files
+    assert second_header in files
+    assert second_source in files
+
+    assert first_header != second_header
+    assert first_source != second_source
+
 def test_generate_code_respects_unsigned_blueprint_flag_default() -> None:
     request = _build_unsigned_request()
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    header_output = files["example/unsigned.proto2ue.h"]
+    unsigned_header = sanitize_generated_filename("example/unsigned.proto2ue.h")
+    header_output = files[unsigned_header]
 
     assert "uint32 Value" in header_output
     assert "FProtoOptionalExampleUnsignedUint32 count" in header_output
@@ -217,7 +303,8 @@ def test_generate_code_converts_unsigned_when_flag_enabled() -> None:
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    header_output = files["example/unsigned.proto2ue.h"]
+    unsigned_header = sanitize_generated_filename("example/unsigned.proto2ue.h")
+    header_output = files[unsigned_header]
 
     assert "int32 Value" in header_output
     assert "FProtoOptionalExampleUnsignedInt32 count" in header_output
@@ -247,7 +334,8 @@ def test_renderer_handles_reserved_identifier_collision() -> None:
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    header_output = files["physics/vector.proto2ue.h"]
+    vector_header = sanitize_generated_filename("physics/vector.proto2ue.h")
+    header_output = files[vector_header]
 
     assert "struct FProtoVector" in header_output
     assert "struct FProtoOptionalPhysicsVectorFProtoVector" in header_output
@@ -260,7 +348,8 @@ def test_renderer_respects_rename_override_parameter() -> None:
     response = generate_code(request)
 
     files = {file.name: file.content for file in response.file}
-    header_output = files["physics/vector.proto2ue.h"]
+    vector_header = sanitize_generated_filename("physics/vector.proto2ue.h")
+    header_output = files[vector_header]
 
     assert "struct FPhysicsVector" in header_output
     assert "struct FProtoOptionalPhysicsVectorFPhysicsVector" in header_output
@@ -300,10 +389,12 @@ def test_renderer_includes_cross_file_dependencies() -> None:
 
     response = generate_code(request)
     files = {file.name: file.content for file in response.file}
-    header_output = files["example/person.proto2ue.h"]
+    person_header = sanitize_generated_filename("example/person.proto2ue.h")
+    dependency_header = sanitize_generated_filename("common/address.proto2ue.h")
+    header_output = files[person_header]
 
-    dependency_include = '#include "common/address.proto2ue.h"'
+    dependency_include = f'#include "{dependency_header}"'
     assert dependency_include in header_output
     assert header_output.index(dependency_include) < header_output.index(
-        '#include "example/person.proto2ue.generated.h"'
+        f'#include "{person_header[:-2]}.generated.h"'
     )

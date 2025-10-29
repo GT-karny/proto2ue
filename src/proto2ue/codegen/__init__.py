@@ -5,6 +5,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Protocol
 
+import hashlib
+import re
+
 from ..type_mapper import (
     UEEnum,
     UEField,
@@ -20,6 +23,39 @@ class GeneratedFile:
 
     name: str
     content: str
+
+
+def sanitize_generated_filename(name: str) -> str:
+    """Sanitize the final path component of ``name`` for generated outputs."""
+
+    if not name:
+        return name
+
+    last_sep = max(name.rfind("/"), name.rfind("\\"))
+    if last_sep != -1:
+        prefix = name[: last_sep + 1]
+        suffix = name[last_sep + 1 :]
+    else:
+        prefix = ""
+        suffix = name
+
+    dot_index = suffix.rfind(".")
+    if dot_index <= 0:
+        base = suffix
+        ext = ""
+    else:
+        base = suffix[:dot_index]
+        ext = suffix[dot_index:]
+
+    sanitized_base = re.sub(r"[^0-9A-Za-z_]", "_", base)
+    if not sanitized_base:
+        sanitized_base = "_"
+
+    if sanitized_base != base:
+        digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:8]
+        sanitized_base = f"{sanitized_base}_{digest}"
+
+    return f"{prefix}{sanitized_base}{ext}"
 
 
 class ITemplateRenderer(Protocol):
@@ -81,8 +117,12 @@ class DefaultTemplateRenderer:
 
     def render(self, ue_file: UEProtoFile) -> Iterable[GeneratedFile]:
         base_name = self._base_name_for(ue_file.name)
-        header_name = f"{base_name}{self._header_suffix}"
-        source_name = f"{base_name}{self._source_suffix}"
+        header_name = sanitize_generated_filename(
+            f"{base_name}{self._header_suffix}"
+        )
+        source_name = sanitize_generated_filename(
+            f"{base_name}{self._source_suffix}"
+        )
         registration_symbol = self._registration_symbol(base_name)
         header_content = self._render_header(header_name, ue_file)
         source_content = self._render_source(header_name, registration_symbol, ue_file)
@@ -197,7 +237,8 @@ class DefaultTemplateRenderer:
     def _generated_header_include(self, header_name: str) -> str | None:
         if not header_name.endswith(".h"):
             return None
-        return f"{header_name[:-2]}.generated.h"
+        generated = f"{header_name[:-2]}.generated.h"
+        return generated
 
     def _dependency_includes(self, ue_file: UEProtoFile) -> List[str]:
         includes: List[str] = []
@@ -206,7 +247,9 @@ class DefaultTemplateRenderer:
         for message in self._collect_messages(ue_file):
             for field in message.fields:
                 for dependency in field.dependent_files:
-                    include = f"{self._base_name_for(dependency)}{self._header_suffix}"
+                    include = sanitize_generated_filename(
+                        f"{self._base_name_for(dependency)}{self._header_suffix}"
+                    )
                     if include in seen:
                         continue
                     seen.add(include)
@@ -277,8 +320,6 @@ class DefaultTemplateRenderer:
 
     def _registration_symbol(self, base_name: str) -> str:
         """Create a unique registration function name for a generated source file."""
-
-        import re
 
         sanitized = re.sub(r"[^0-9A-Za-z_]", "_", base_name)
         if not sanitized:
@@ -452,7 +493,9 @@ class DefaultTemplateRenderer:
             if dependency and dependency != source_file
         ]
         return [
-            f"{self._base_name_for(dependency)}{self._header_suffix}"
+            sanitize_generated_filename(
+                f"{self._base_name_for(dependency)}{self._header_suffix}"
+            )
             for dependency in sorted(filtered)
         ]
 
