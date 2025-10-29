@@ -67,16 +67,22 @@ class DefaultTemplateRenderer:
         lines.append("")
         lines.append('#include "CoreMinimal.h"')
         generated_include = self._generated_header_include(header_name)
+        dependency_includes = self._dependency_includes(ue_file)
         namespace_stack = self._namespace_stack(ue_file.package)
 
         if namespace_stack:
             lines.append("")
             lines.extend(self._begin_ue_namespaces(namespace_stack))
 
+        include_block: List[str] = []
+        include_block.extend(f'#include "{include}"' for include in dependency_includes)
         if generated_include is not None:
+            include_block.append(f'#include "{generated_include}"')
+
+        if include_block:
             if namespace_stack:
                 lines.append("")
-            lines.append(f'#include "{generated_include}"')
+            lines.extend(include_block)
 
         lines.append("")
 
@@ -162,6 +168,21 @@ class DefaultTemplateRenderer:
         if not header_name.endswith(".h"):
             return None
         return f"{header_name[:-2]}.generated.h"
+
+    def _dependency_includes(self, ue_file: UEProtoFile) -> List[str]:
+        includes: List[str] = []
+        seen: set[str] = set()
+
+        for message in self._collect_messages(ue_file):
+            for field in message.fields:
+                for dependency in field.dependent_files:
+                    include = f"{self._base_name_for(dependency)}{self._header_suffix}"
+                    if include in seen:
+                        continue
+                    seen.add(include)
+                    includes.append(include)
+
+        return includes
 
     def _render_source(
         self, header_name: str, registration_symbol: str, ue_file: UEProtoFile
