@@ -128,6 +128,25 @@ def _build_sample_request() -> plugin_pb2.CodeGeneratorRequest:
     return request
 
 
+def _build_unsigned_request() -> plugin_pb2.CodeGeneratorRequest:
+    request = plugin_pb2.CodeGeneratorRequest()
+    file_proto = request.proto_file.add()
+    file_proto.name = "example/unsigned.proto"
+    file_proto.package = "example"
+
+    message = file_proto.message_type.add()
+    message.name = "Unsigned"
+
+    count_field = message.field.add()
+    count_field.name = "count"
+    count_field.number = 1
+    count_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    count_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_UINT32
+
+    request.file_to_generate.append("example/unsigned.proto")
+    return request
+
+
 def test_default_renderer_outputs_golden_files() -> None:
     request = _build_sample_request()
     response = generate_code(request)
@@ -180,3 +199,26 @@ def test_renderer_splits_namespace_segments() -> None:
     assert header_output.index("UE_NAMESPACE_END(example)") < header_output.index(
         "UE_NAMESPACE_END(demo)"
     )
+
+
+def test_generate_code_respects_unsigned_blueprint_flag_default() -> None:
+    request = _build_unsigned_request()
+    response = generate_code(request)
+
+    files = {file.name: file.content for file in response.file}
+    header_output = files["example/unsigned.proto2ue.h"]
+
+    assert "uint32 Value" in header_output
+    assert "FProtoOptionalExampleUnsignedUint32 count" in header_output
+
+
+def test_generate_code_converts_unsigned_when_flag_enabled() -> None:
+    request = _build_unsigned_request()
+    request.parameter = "convert_unsigned_for_blueprint=true"
+    response = generate_code(request)
+
+    files = {file.name: file.content for file in response.file}
+    header_output = files["example/unsigned.proto2ue.h"]
+
+    assert "int32 Value" in header_output
+    assert "FProtoOptionalExampleUnsignedInt32 count" in header_output
