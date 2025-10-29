@@ -9,6 +9,7 @@ import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import model
+from .config import GeneratorConfig
 
 
 @dataclass(slots=True)
@@ -153,31 +154,19 @@ class TypeMapper:
         "sint64": "int64",
     }
 
-    _RESERVED_SYMBOLS = {
-        "FVector",
-        "FVector2D",
-        "FVector3d",
-        "FVector4",
-        "FVector4d",
-        "EVector",
-        "EVector2D",
-        "EVector3d",
-        "EVector4",
-        "EVector4d",
-        "EVectorState",
-    }
-
     _COLLISION_INSERT = "Proto"
 
     def __init__(
         self,
         *,
+        config: GeneratorConfig | None = None,
         message_prefix: str = "F",
         enum_prefix: str = "E",
         optional_wrapper: str = "FProtoOptional",
         array_wrapper: str = "TArray",
         map_wrapper: str = "TMap",
     ) -> None:
+        self._config = config or GeneratorConfig()
         self._message_prefix = message_prefix
         self._enum_prefix = enum_prefix
         self._optional_wrapper_prefix = optional_wrapper
@@ -189,6 +178,10 @@ class TypeMapper:
         self._current_file_suffix: Optional[str] = None
         self._current_proto_file_name: Optional[str] = None
         self._type_file_index: Dict[int, str] = {}
+        self._reserved_identifiers = {
+            identifier for identifier in self._config.reserved_identifiers if identifier
+        }
+        self._rename_overrides = dict(self._config.rename_overrides)
 
     def register_files(self, proto_files: Iterable[model.ProtoFile]) -> None:
         """Register symbols for the provided proto files."""
@@ -217,6 +210,7 @@ class TypeMapper:
             previous_file_suffix = self._current_file_suffix
             previous_proto_file_name = self._current_proto_file_name
             self._current_file_suffix = self._sanitize_file_identifier(proto_file.name)
+            previous_proto_file_name = self._current_proto_file_name
             self._current_proto_file_name = proto_file.name
             try:
                 messages = [self._convert_message(message) for message in proto_file.messages]
@@ -247,12 +241,12 @@ class TypeMapper:
 
     # Symbol table helpers -------------------------------------------------
     def _register_enum(self, enum: model.Enum, *, file_name: str) -> None:
-        ue_name = self._compose_type_name(self._enum_prefix, enum.full_name)
+        ue_name = self._resolve_type_name(enum.full_name, self._enum_prefix)
         self._symbol_table[enum.full_name] = _UESymbol("enum", ue_name)
         self._type_file_index[id(enum)] = file_name
 
     def _register_message(self, message: model.Message, *, file_name: str) -> None:
-        ue_name = self._compose_type_name(self._message_prefix, message.full_name)
+        ue_name = self._resolve_type_name(message.full_name, self._message_prefix)
         self._symbol_table[message.full_name] = _UESymbol("message", ue_name)
         self._type_file_index[id(message)] = file_name
 
@@ -260,6 +254,28 @@ class TypeMapper:
             self._register_enum(nested_enum, file_name=file_name)
         for nested_message in message.nested_messages:
             self._register_message(nested_message, file_name=file_name)
+
+    def _resolve_type_name(self, full_name: str, prefix: str) -> str:
+        override = self._rename_overrides.get(full_name)
+        if override is not None:
+            ue_name = override.strip()
+            if not ue_name:
+                raise ValueError(
+                    f"Rename override for '{full_name}' resolved to an empty UE identifier"
+                )
+            if ue_name in self._reserved_identifiers:
+                raise ValueError(
+                    f"Rename override for '{full_name}' uses reserved UE identifier '{ue_name}'"
+                )
+            if not self._is_name_available(ue_name):
+                existing = self._symbol_table.get(full_name)
+                if existing is not None and existing.ue_name == ue_name:
+                    return ue_name
+                raise ValueError(
+                    f"Rename override for '{full_name}' collides with another UE identifier '{ue_name}'"
+                )
+            return ue_name
+        return self._compose_type_name(prefix, full_name)
 
     def _compose_type_name(self, prefix: str, full_name: str) -> str:
         existing = self._symbol_table.get(full_name)
@@ -285,7 +301,7 @@ class TypeMapper:
             attempt += 1
 
     def _is_name_available(self, name: str) -> bool:
-        if name in self._RESERVED_SYMBOLS:
+        if name in self._reserved_identifiers:
             return False
         return all(symbol.ue_name != name for symbol in self._symbol_table.values())
 
@@ -509,10 +525,7 @@ class TypeMapper:
         if field.kind is model.FieldKind.SCALAR:
             if not field.scalar:
                 raise ValueError(f"Scalar field '{field.name}' does not provide a scalar name")
-            mapped = self._SCALAR_MAPPING.get(field.scalar)
-            if mapped is None:
-                raise KeyError(f"Unsupported scalar type '{field.scalar}' for field '{field.name}'")
-            return mapped
+            return self._scalar_to_ue_type(field.scalar, field_name=field.name)
 
         if field.kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
             return self._lookup_symbol(field.resolved_type, field.type_name)
@@ -612,10 +625,7 @@ class TypeMapper:
         if kind is model.FieldKind.SCALAR:
             if scalar is None:
                 raise ValueError(f"Map {position} is scalar but scalar name is missing")
-            mapped = self._SCALAR_MAPPING.get(scalar)
-            if mapped is None:
-                raise KeyError(f"Unsupported scalar map {position} type '{scalar}'")
-            return mapped
+            return self._scalar_to_ue_type(scalar, position=position)
         if kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
             return self._lookup_symbol(resolved, type_name)
         raise ValueError(f"Unsupported map {position} kind '{kind}'")
@@ -628,6 +638,29 @@ class TypeMapper:
         if isinstance(unreal, dict):
             return unreal
         return {}
+
+    def _scalar_to_ue_type(
+        self, scalar: str, *, field_name: str | None = None, position: str | None = None
+    ) -> str:
+        mapped = self._SCALAR_MAPPING.get(scalar)
+        if mapped is None:
+            if field_name is not None:
+                raise KeyError(
+                    f"Unsupported scalar type '{scalar}' for field '{field_name}'"
+                )
+            if position is not None:
+                raise KeyError(f"Unsupported scalar map {position} type '{scalar}'")
+            raise KeyError(f"Unsupported scalar type '{scalar}'")
+        return self._blueprint_unsigned_override(mapped)
+
+    def _blueprint_unsigned_override(self, ue_type: str) -> str:
+        if not self._config.convert_unsigned_to_blueprint:
+            return ue_type
+        if ue_type == "uint32":
+            return "int32"
+        if ue_type == "uint64":
+            return "int64"
+        return ue_type
 
     def _as_bool(self, value: object, *, default: bool = False) -> bool:
         if value is None:

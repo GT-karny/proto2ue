@@ -11,6 +11,7 @@ __all__ = [
     "DefaultTemplateRenderer",
     "GeneratedFile",
     "ITemplateRenderer",
+    "GeneratorConfig",
     "model",
     "TypeMapper",
     "UEEnum",
@@ -44,6 +45,11 @@ def __getattr__(name: str):
             "ITemplateRenderer": ITemplateRenderer,
         }
         return mapping[name]
+
+    if name == "GeneratorConfig":
+        from .config import GeneratorConfig
+
+        return GeneratorConfig
 
     if name in {
         "TypeMapper",

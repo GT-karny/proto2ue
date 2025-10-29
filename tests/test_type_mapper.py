@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
 from proto2ue import model
+from proto2ue.config import GeneratorConfig
 from proto2ue.type_mapper import (
     TypeMapper,
     UEField,
@@ -534,4 +537,157 @@ def test_type_mapper_avoids_unreal_reserved_names() -> None:
     assert container.fields[1].ue_type == "FProtoOptionalMathEProtoVectorState"
 
     assert ue_file.enums[0].ue_name == "EProtoVectorState"
+
+
+def test_type_mapper_unsigned_integer_blueprint_conversion_toggle() -> None:
+    unsigned_message = model.Message(
+        name="Unsigned",
+        full_name="example.Unsigned",
+        fields=[
+            model.Field(
+                name="count32",
+                number=1,
+                cardinality=model.FieldCardinality.OPTIONAL,
+                kind=model.FieldKind.SCALAR,
+                scalar="uint32",
+            ),
+            model.Field(
+                name="values64",
+                number=2,
+                cardinality=model.FieldCardinality.REPEATED,
+                kind=model.FieldKind.SCALAR,
+                scalar="uint64",
+            ),
+            model.Field(
+                name="lookup",
+                number=3,
+                cardinality=model.FieldCardinality.REPEATED,
+                kind=model.FieldKind.MAP,
+                map_entry=model.MapEntry(
+                    key_kind=model.FieldKind.SCALAR,
+                    key_scalar="string",
+                    value_kind=model.FieldKind.SCALAR,
+                    value_scalar="uint32",
+                ),
+            ),
+        ],
+    )
+
+    proto_file = model.ProtoFile(name="unsigned.proto", package="example", messages=[unsigned_message])
+
+    default_mapper = TypeMapper()
+    default_file = default_mapper.map_file(proto_file)
+    default_fields = default_file.messages[0].fields
+
+    count32_default = default_fields[0]
+    assert count32_default.base_type == "uint32"
+    assert count32_default.optional_wrapper is not None
+    assert count32_default.optional_wrapper.base_type == "uint32"
+    assert count32_default.optional_wrapper.ue_name == "FProtoOptionalUnsignedUint32"
+
+    values64_default = default_fields[1]
+    assert values64_default.base_type == "uint64"
+    assert values64_default.ue_type == "TArray<uint64>"
+
+    lookup_default = default_fields[2]
+    assert lookup_default.map_value_type == "uint32"
+    assert lookup_default.ue_type == "TMap<FString, uint32>"
+
+    blueprint_mapper = TypeMapper(
+        config=GeneratorConfig(convert_unsigned_to_blueprint=True)
+    )
+    blueprint_file = blueprint_mapper.map_file(proto_file)
+    blueprint_fields = blueprint_file.messages[0].fields
+
+    count32_blueprint = blueprint_fields[0]
+    assert count32_blueprint.base_type == "int32"
+    assert count32_blueprint.optional_wrapper is not None
+    assert count32_blueprint.optional_wrapper.base_type == "int32"
+    assert count32_blueprint.optional_wrapper.ue_name == "FProtoOptionalUnsignedInt32"
+
+    values64_blueprint = blueprint_fields[1]
+    assert values64_blueprint.base_type == "int64"
+    assert values64_blueprint.ue_type == "TArray<int64>"
+
+    lookup_blueprint = blueprint_fields[2]
+    assert lookup_blueprint.map_value_type == "int32"
+    assert lookup_blueprint.ue_type == "TMap<FString, int32>"
+
+    default_wrappers = {wrapper.base_type for wrapper in default_file.optional_wrappers}
+    blueprint_wrappers = {wrapper.base_type for wrapper in blueprint_file.optional_wrappers}
+
+    assert "uint32" in default_wrappers
+    assert "int32" in blueprint_wrappers
+    assert "uint32" not in blueprint_wrappers
+
+
+def _build_reserved_collision_model() -> model.ProtoFile:
+    package = "physics"
+
+    vector_message = model.Message(
+        name="Vector",
+        full_name=f"{package}.Vector",
+        fields=[],
+    )
+
+    holder_field = model.Field(
+        name="vector",
+        number=1,
+        cardinality=model.FieldCardinality.OPTIONAL,
+        kind=model.FieldKind.MESSAGE,
+        type_name=f"{package}.Vector",
+        resolved_type=vector_message,
+    )
+
+    holder_message = model.Message(
+        name="Holder",
+        full_name=f"{package}.Holder",
+        fields=[holder_field],
+    )
+
+    return model.ProtoFile(
+        name="physics/vector.proto",
+        package=package,
+        messages=[vector_message, holder_message],
+        enums=[],
+    )
+
+
+def test_type_mapper_renames_reserved_identifiers_from_config() -> None:
+    proto_file = _build_reserved_collision_model()
+    config = GeneratorConfig(reserved_identifiers=("FVector",))
+
+    mapper = TypeMapper(config=config)
+    ue_file = mapper.map_file(proto_file)
+
+    message_names = {message.full_name: message for message in ue_file.messages}
+    vector = message_names["physics.Vector"]
+    holder = message_names["physics.Holder"]
+
+    assert vector.ue_name == "FProtoVector"
+    assert holder.fields[0].base_type == "FProtoVector"
+
+
+def test_type_mapper_respects_rename_overrides() -> None:
+    proto_file = _build_reserved_collision_model()
+    config = GeneratorConfig(rename_overrides={"physics.Vector": "FPhysicsVector"})
+
+    mapper = TypeMapper(config=config)
+    ue_file = mapper.map_file(proto_file)
+
+    vector = next(message for message in ue_file.messages if message.name == "Vector")
+    holder = next(message for message in ue_file.messages if message.name == "Holder")
+
+    assert vector.ue_name == "FPhysicsVector"
+    assert holder.fields[0].base_type == "FPhysicsVector"
+
+
+def test_type_mapper_rejects_reserved_rename_override() -> None:
+    proto_file = _build_reserved_collision_model()
+    config = GeneratorConfig(rename_overrides={"physics.Vector": "FVector"})
+
+    mapper = TypeMapper(config=config)
+
+    with pytest.raises(ValueError):
+        mapper.map_file(proto_file)
 

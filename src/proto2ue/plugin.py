@@ -7,6 +7,7 @@ from typing import Any, Iterable
 from google.protobuf.compiler import plugin_pb2
 
 from .codegen import DefaultTemplateRenderer, GeneratedFile, ITemplateRenderer
+from .config import GeneratorConfig
 from .descriptor_loader import DescriptorLoader
 from .type_mapper import TypeMapper
 
@@ -22,6 +23,7 @@ def generate_code(
     request: plugin_pb2.CodeGeneratorRequest,
     *,
     renderer: ITemplateRenderer | None = None,
+    config: GeneratorConfig | None = None,
 ) -> plugin_pb2.CodeGeneratorResponse:
     """Run the proto2ue pipeline and return a populated response message."""
 
@@ -33,7 +35,8 @@ def generate_code(
         files_to_generate = list(loader.files.keys())
 
     response = plugin_pb2.CodeGeneratorResponse()
-    type_mapper = TypeMapper()
+    effective_config = config or GeneratorConfig.from_parameter_string(request.parameter)
+    type_mapper = TypeMapper(config=effective_config)
     renderer = renderer or DefaultTemplateRenderer()
 
     type_mapper.register_files(loader.files.values())
