@@ -241,7 +241,7 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
 
     person = ue_file.messages[0]
     assert isinstance(person, UEMessage)
-    assert person.ue_name == "FPerson"
+    assert person.ue_name == "FExamplePerson"
     assert person.blueprint_type is True
     assert person.struct_specifiers == ["Atomic"]
     assert person.struct_metadata == {"DisplayName": "Person"}
@@ -273,19 +273,19 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
 
     labels_field = person.fields[2]
     assert labels_field.is_map is True
-    assert labels_field.ue_type == "TMap<FString, FMeta>"
+    assert labels_field.ue_type == "TMap<FString, FExampleMeta>"
     assert labels_field.map_key_type == "FString"
-    assert labels_field.map_value_type == "FMeta"
+    assert labels_field.map_value_type == "FExampleMeta"
     assert labels_field.uproperty_specifiers == ["VisibleAnywhere"]
 
     color_field = person.fields[3]
-    assert color_field.base_type == "EColor"
-    assert color_field.ue_type == "FProtoOptionalSampleEColor"
+    assert color_field.base_type == "EExampleColor"
+    assert color_field.ue_type == "FProtoOptionalSampleEExampleColor"
     assert color_field.category == "Appearance"
 
     attributes_field = person.fields[4]
-    assert attributes_field.base_type == "FPersonAttributes"
-    assert attributes_field.ue_type == "FProtoOptionalSampleFPersonAttributes"
+    assert attributes_field.base_type == "FExamplePersonAttributes"
+    assert attributes_field.ue_type == "FProtoOptionalSampleFExamplePersonAttributes"
     assert attributes_field.uproperty_metadata == {"DisplayName": "Attributes"}
 
     email_field = person.fields[5]
@@ -303,8 +303,8 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     assert phone_field.uproperty_metadata == {"DisplayName": "Phone"}
 
     mood_field = person.fields[7]
-    assert mood_field.base_type == "EPersonMood"
-    assert mood_field.ue_type == "FProtoOptionalSampleEPersonMood"
+    assert mood_field.base_type == "EExamplePersonMood"
+    assert mood_field.ue_type == "FProtoOptionalSampleEExamplePersonMood"
     assert mood_field.blueprint_exposed is False
     assert isinstance(mood_field.optional_wrapper, UEOptionalWrapper)
     assert mood_field.optional_wrapper.value_blueprint_exposed is False
@@ -313,25 +313,30 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
 
     contact_wrapper = person.oneofs[0]
     assert isinstance(contact_wrapper, UEOneofWrapper)
-    assert contact_wrapper.ue_name == "FPersonContactOneof"
+    assert contact_wrapper.ue_name == "FExamplePersonContactOneof"
     assert [case.field.name for case in contact_wrapper.cases] == ["email", "phone"]
-    assert contact_wrapper.cases[0].ue_case_name == "FPersonContactOneofEmailCase"
+    assert (
+        contact_wrapper.cases[0].ue_case_name == "FExamplePersonContactOneofEmailCase"
+    )
 
     assert len(person.nested_messages) == 1
-    assert person.nested_messages[0].ue_name == "FPersonAttributes"
+    assert person.nested_messages[0].ue_name == "FExamplePersonAttributes"
     assert person.nested_messages[0].blueprint_type is True
     assert person.nested_messages[0].struct_specifiers == ["Atomic"]
-    assert person.nested_messages[0].struct_metadata == {"DisplayName": "Attributes"}
+    assert person.nested_messages[0].struct_metadata == {
+        "DisplayName": "Attributes"
+    }
     nickname_field = person.nested_messages[0].fields[0]
     assert nickname_field.category == "Profile"
     assert nickname_field.ue_type == "FProtoOptionalSampleFString"
 
     assert len(person.nested_enums) == 1
-    assert person.nested_enums[0].ue_name == "EPersonMood"
+    assert person.nested_enums[0].ue_name == "EExamplePersonMood"
     assert person.nested_enums[0].blueprint_type is False
 
     meta = ue_file.messages[1]
-    assert meta.ue_name == "FMeta"
+    assert meta.ue_name == "FExampleMeta"
+    assert meta.struct_metadata == {"DisplayName": "example.Meta"}
     assert meta.blueprint_type is False
     created_by_field = meta.fields[0]
     assert created_by_field.ue_type == "FProtoOptionalSampleFString"
@@ -340,20 +345,20 @@ def test_type_mapper_builds_symbol_table_and_converts_types() -> None:
     optional_wrappers = {wrapper.base_type: wrapper for wrapper in ue_file.optional_wrappers}
     assert set(optional_wrappers) == {
         "int32",
-        "EColor",
-        "FPersonAttributes",
-        "EPersonMood",
+        "EExampleColor",
+        "FExamplePersonAttributes",
+        "EExamplePersonMood",
         "FString",
     }
     assert optional_wrappers["int32"].ue_name == "FProtoOptionalSampleInt32"
     assert optional_wrappers["FString"].ue_name == "FProtoOptionalSampleFString"
     assert optional_wrappers["int32"].blueprint_type is True
     assert optional_wrappers["int32"].value_blueprint_exposed is True
-    assert optional_wrappers["EPersonMood"].blueprint_type is False
-    assert optional_wrappers["EPersonMood"].value_blueprint_exposed is False
+    assert optional_wrappers["EExamplePersonMood"].blueprint_type is False
+    assert optional_wrappers["EExamplePersonMood"].value_blueprint_exposed is False
 
     color_enum = ue_file.enums[0]
-    assert color_enum.ue_name == "EColor"
+    assert color_enum.ue_name == "EExampleColor"
     assert [value.name for value in color_enum.values] == ["COLOR_RED", "COLOR_GREEN"]
     assert color_enum.blueprint_type is True
     assert color_enum.specifiers == ["Flags"]
@@ -417,14 +422,79 @@ def test_type_mapper_registers_imported_symbols_across_files() -> None:
 
     assert len(ue_file.messages) == 1
     ue_consumer = ue_file.messages[0]
-    assert ue_consumer.fields[0].base_type == "FSharedMessage"
-    assert ue_consumer.fields[0].ue_type == "FProtoOptionalConsumerFSharedMessage"
+    assert ue_consumer.fields[0].base_type == "FCommonSharedMessage"
+    assert ue_consumer.fields[0].ue_type == "FProtoOptionalConsumerFCommonSharedMessage"
     assert isinstance(ue_consumer.fields[0].optional_wrapper, UEOptionalWrapper)
-    assert ue_consumer.fields[0].optional_wrapper.base_type == "FSharedMessage"
-    assert ue_consumer.fields[1].base_type == "ESharedState"
-    assert ue_consumer.fields[1].ue_type == "FProtoOptionalConsumerESharedState"
+    assert ue_consumer.fields[0].optional_wrapper.base_type == "FCommonSharedMessage"
+    assert ue_consumer.fields[1].base_type == "ECommonSharedState"
+    assert ue_consumer.fields[1].ue_type == "FProtoOptionalConsumerECommonSharedState"
     wrappers = {wrapper.base_type: wrapper for wrapper in ue_file.optional_wrappers}
-    assert set(wrappers) == {"FSharedMessage", "ESharedState"}
+    assert set(wrappers) == {"FCommonSharedMessage", "ECommonSharedState"}
+
+
+def test_type_mapper_includes_package_segments_in_names_and_metadata() -> None:
+    foo_enum = model.Enum(
+        name="Kind",
+        full_name="foo.bar.Kind",
+        values=[model.EnumValue(name="KIND_UNKNOWN", number=0)],
+    )
+    foo_message = model.Message(
+        name="Widget",
+        full_name="foo.bar.Widget",
+        fields=[],
+    )
+    foo_proto = model.ProtoFile(
+        name="foo.proto",
+        package="foo.bar",
+        messages=[foo_message],
+        enums=[foo_enum],
+    )
+
+    baz_enum = model.Enum(
+        name="Kind",
+        full_name="baz.Kind",
+        values=[model.EnumValue(name="KIND_UNKNOWN", number=0)],
+    )
+    baz_message = model.Message(
+        name="Widget",
+        full_name="baz.Widget",
+        fields=[],
+    )
+    baz_proto = model.ProtoFile(
+        name="baz.proto",
+        package="baz",
+        messages=[baz_message],
+        enums=[baz_enum],
+    )
+
+    mapper = TypeMapper()
+    mapper.register_files([foo_proto, baz_proto])
+
+    foo_file = mapper.map_file(foo_proto)
+    baz_file = mapper.map_file(baz_proto)
+
+    foo_widget = foo_file.messages[0]
+    baz_widget = baz_file.messages[0]
+
+    assert foo_widget.ue_name == "FFooBarWidget"
+    assert baz_widget.ue_name == "FBazWidget"
+    assert foo_widget.ue_name != baz_widget.ue_name
+
+    assert foo_widget.struct_metadata["DisplayName"] == "foo.bar.Widget"
+    assert foo_widget.category == "foo.bar.Widget"
+    assert baz_widget.struct_metadata["DisplayName"] == "baz.Widget"
+    assert baz_widget.category == "baz.Widget"
+
+    foo_enum_mapped = foo_file.enums[0]
+    baz_enum_mapped = baz_file.enums[0]
+
+    assert foo_enum_mapped.ue_name == "EFooBarKind"
+    assert baz_enum_mapped.ue_name == "EBazKind"
+    assert foo_enum_mapped.ue_name != baz_enum_mapped.ue_name
+    assert foo_enum_mapped.metadata == {"DisplayName": "foo.bar.Kind"}
+    assert foo_enum_mapped.category == "foo.bar.Kind"
+    assert baz_enum_mapped.metadata == {"DisplayName": "baz.Kind"}
+    assert baz_enum_mapped.category == "baz.Kind"
 
 
 def test_optional_wrapper_names_include_proto_path_segments() -> None:
@@ -479,6 +549,18 @@ def test_optional_wrapper_names_include_proto_path_segments() -> None:
     assert first_wrapper.ue_name != second_wrapper.ue_name
 
 
+def test_type_mapper_can_disable_package_segments_via_config() -> None:
+    message = model.Message(name="Widget", full_name="foo.bar.Widget")
+    proto = model.ProtoFile(name="widget.proto", package="foo.bar", messages=[message])
+
+    mapper = TypeMapper(config=GeneratorConfig(include_package_in_names=False))
+    ue_file = mapper.map_file(proto)
+
+    ue_widget = ue_file.messages[0]
+    assert ue_widget.ue_name == "FWidget"
+    assert ue_widget.struct_metadata == {"DisplayName": "foo.bar.Widget"}
+    assert ue_widget.category == "foo.bar.Widget"
+
 def test_type_mapper_avoids_unreal_reserved_names() -> None:
     vector3d_message = model.Message(name="Vector3d", full_name="math.Vector3d")
     vector2d_message = model.Message(name="Vector2D", full_name="math.Vector2D")
@@ -527,16 +609,16 @@ def test_type_mapper_avoids_unreal_reserved_names() -> None:
 
     message_names = {message.name: message.ue_name for message in ue_file.messages}
 
-    assert message_names["Vector3d"] == "FProtoVector3d"
-    assert message_names["Vector2D"] == "FProtoVector2D"
+    assert message_names["Vector3d"] == "FMathVector3d"
+    assert message_names["Vector2D"] == "FMathVector2D"
 
     container = next(message for message in ue_file.messages if message.name == "Container")
-    assert container.fields[0].base_type == "FProtoVector3d"
-    assert container.fields[0].ue_type == "FProtoOptionalMathFProtoVector3d"
-    assert container.fields[1].base_type == "EProtoVectorState"
-    assert container.fields[1].ue_type == "FProtoOptionalMathEProtoVectorState"
+    assert container.fields[0].base_type == "FMathVector3d"
+    assert container.fields[0].ue_type == "FProtoOptionalMathFMathVector3d"
+    assert container.fields[1].base_type == "EMathVectorState"
+    assert container.fields[1].ue_type == "FProtoOptionalMathEMathVectorState"
 
-    assert ue_file.enums[0].ue_name == "EProtoVectorState"
+    assert ue_file.enums[0].ue_name == "EMathVectorState"
 
 
 def test_type_mapper_unsigned_integer_blueprint_conversion_toggle() -> None:
@@ -655,7 +737,7 @@ def _build_reserved_collision_model() -> model.ProtoFile:
 
 def test_type_mapper_renames_reserved_identifiers_from_config() -> None:
     proto_file = _build_reserved_collision_model()
-    config = GeneratorConfig(reserved_identifiers=("FVector",))
+    config = GeneratorConfig(reserved_identifiers=("FPhysicsVector",))
 
     mapper = TypeMapper(config=config)
     ue_file = mapper.map_file(proto_file)
@@ -664,8 +746,8 @@ def test_type_mapper_renames_reserved_identifiers_from_config() -> None:
     vector = message_names["physics.Vector"]
     holder = message_names["physics.Holder"]
 
-    assert vector.ue_name == "FProtoVector"
-    assert holder.fields[0].base_type == "FProtoVector"
+    assert vector.ue_name == "FProtoPhysicsVector"
+    assert holder.fields[0].base_type == "FProtoPhysicsVector"
 
 
 def test_type_mapper_respects_rename_overrides() -> None:

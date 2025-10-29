@@ -182,6 +182,7 @@ class TypeMapper:
             identifier for identifier in self._config.reserved_identifiers if identifier
         }
         self._rename_overrides = dict(self._config.rename_overrides)
+        self._include_package_in_names = self._config.include_package_in_names
 
     def register_files(self, proto_files: Iterable[model.ProtoFile]) -> None:
         """Register symbols for the provided proto files."""
@@ -282,7 +283,8 @@ class TypeMapper:
         if existing is not None:
             return existing.ue_name
         relative_path = self._relative_symbol_path(full_name)
-        pascal_segments = [self._to_pascal_case(segment) for segment in relative_path]
+        sanitized_segments = [self._sanitize_symbol_segment(segment) for segment in relative_path]
+        pascal_segments = [self._to_pascal_case(segment) for segment in sanitized_segments]
         suffix = "".join(pascal_segments)
         return self._make_unique_type_name(prefix, suffix)
 
@@ -308,14 +310,23 @@ class TypeMapper:
     def _relative_symbol_path(self, full_name: str) -> List[str]:
         if not full_name:
             return []
-        package = self._package
-        if package and full_name.startswith(f"{package}."):
-            remainder = full_name[len(package) + 1 :]
-        else:
-            remainder = full_name
-        return [segment for segment in remainder.split(".") if segment]
+        segments = [segment for segment in full_name.split(".") if segment]
+        if not self._include_package_in_names:
+            package = self._package
+            if package:
+                package_segments = [segment for segment in package.split(".") if segment]
+                if segments[: len(package_segments)] == package_segments:
+                    segments = segments[len(package_segments) :]
+        return segments
 
     _PASCAL_CASE_PATTERN = re.compile(r"[_\s]+")
+
+    def _sanitize_symbol_segment(self, segment: str) -> str:
+        sanitized = re.sub(r"[^0-9A-Za-z_]", "_", segment)
+        sanitized = re.sub(r"_+", "_", sanitized).strip("_")
+        if not sanitized:
+            sanitized = "Segment"
+        return sanitized
 
     def _to_pascal_case(self, name: str) -> str:
         if not name:
@@ -347,6 +358,10 @@ class TypeMapper:
         metadata = self._as_str_dict(unreal_options.get("meta"))
         category = self._as_optional_str(unreal_options.get("category"))
 
+        metadata.setdefault("DisplayName", enum.full_name)
+        if category is None:
+            category = enum.full_name
+
         values = [
             UEEnumValue(name=value.name, number=value.number, source=value)
             for value in enum.values
@@ -371,6 +386,10 @@ class TypeMapper:
         struct_specifiers = self._as_str_list(unreal_options.get("struct_specifiers"))
         struct_metadata = self._as_str_dict(unreal_options.get("meta"))
         category = self._as_optional_str(unreal_options.get("category"))
+
+        struct_metadata.setdefault("DisplayName", message.full_name)
+        if category is None:
+            category = message.full_name
 
         fields: List[UEField] = []
         field_map: Dict[int, UEField] = {}

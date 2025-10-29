@@ -108,6 +108,7 @@ class GeneratorConfig:
     convert_unsigned_to_blueprint: bool = False
     reserved_identifiers: Tuple[str, ...] = DEFAULT_RESERVED_IDENTIFIERS
     rename_overrides: Dict[str, str] = field(default_factory=dict)
+    include_package_in_names: bool = True
 
     @classmethod
     def from_parameter_string(cls, parameter: str | None) -> "GeneratorConfig":
@@ -141,10 +142,15 @@ class GeneratorConfig:
             rename_entries.extend(_load_identifier_file(rename_file))
         rename_overrides = _parse_rename_entries(rename_entries)
 
+        include_package_flag = overrides.get("include_package_in_names")
+        include_package_value = _to_bool(include_package_flag)
+
         return cls(
             convert_unsigned_to_blueprint=convert_value if convert_value is not None else False,
             reserved_identifiers=unique_reserved,
             rename_overrides=rename_overrides,
+            include_package_in_names=
+                include_package_value if include_package_value is not None else True,
         )
 
 
