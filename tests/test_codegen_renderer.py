@@ -160,10 +160,10 @@ def test_default_renderer_outputs_golden_files() -> None:
     header_output = files["example/person.proto2ue.h"]
     source_output = files["example/person.proto2ue.cpp"]
 
-    assert "UE_NAMESPACE_BEGIN(example)" in header_output
-    assert "UE_NAMESPACE_END(example)" in header_output
-    assert "UE_NAMESPACE_BEGIN(example)" in source_output
-    assert "UE_NAMESPACE_END(example)" in source_output
+    assert "UE_NAMESPACE_BEGIN(" not in header_output
+    assert "UE_NAMESPACE_END(" not in header_output
+    assert "UE_NAMESPACE_BEGIN(" not in source_output
+    assert "UE_NAMESPACE_END(" not in source_output
 
     golden_dir = Path(__file__).parent / "golden"
     header_golden = (golden_dir / "example" / "person.proto2ue.h").read_text()
@@ -190,32 +190,14 @@ def test_renderer_splits_namespace_segments() -> None:
     header_output = files["demo/example.proto2ue.h"]
     source_output = files["demo/example.proto2ue.cpp"]
 
-    header_begin = [
-        line for line in header_output.splitlines() if line.startswith("UE_NAMESPACE_BEGIN")
-    ]
-    header_end = [
-        line for line in header_output.splitlines() if line.startswith("UE_NAMESPACE_END")
-    ]
+    assert "UE_NAMESPACE_BEGIN(" not in header_output
+    assert "UE_NAMESPACE_END(" not in header_output
+    assert "UE_NAMESPACE_BEGIN(" not in source_output
+    assert "UE_NAMESPACE_END(" not in source_output
 
-    assert header_begin == [
-        "UE_NAMESPACE_BEGIN(demo)",
-        "UE_NAMESPACE_BEGIN(example)",
-    ]
-    assert header_end == [
-        "UE_NAMESPACE_END(example)",
-        "UE_NAMESPACE_END(demo)",
-    ]
-    assert all("." not in line for line in header_begin + header_end)
-
-    source_begin = [
-        line for line in source_output.splitlines() if line.startswith("UE_NAMESPACE_BEGIN")
-    ]
-    source_end = [
-        line for line in source_output.splitlines() if line.startswith("UE_NAMESPACE_END")
-    ]
-
-    assert source_begin == header_begin
-    assert source_end == header_end
+    # Ensure the generated identifiers do not contain namespace separators
+    assert "RegisterGeneratedTypes_demo_example" in source_output
+    assert "RegisterGeneratedTypes_demo/example" not in source_output
 
 
 def test_generate_code_respects_unsigned_blueprint_flag_default() -> None:
