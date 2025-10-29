@@ -233,7 +233,7 @@ class DefaultTemplateRenderer:
         if not header_name.endswith(".h"):
             return None
         generated = f"{header_name[:-2]}.generated.h"
-        return sanitize_generated_filename(generated)
+        return generated
 
     def _dependency_includes(self, ue_file: UEProtoFile) -> List[str]:
         includes: List[str] = []
