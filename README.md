@@ -73,16 +73,39 @@ pip install protobuf pytest
    export PATH="$HOME/.local/bin:$PATH"
    ```
 
-4. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`.proto2ue.converters.h/.cpp`) です。
+ 4. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`.proto2ue.converters.h/.cpp`) です。`--ue_out=<options>:<out_dir>` 形式で出力ディレクトリと生成時オプションを指定できます。
 
-   ```bash
-   protoc \
-     --plugin=protoc-gen-ue=protoc-gen-ue \
-     --ue_out=./Intermediate/Proto2UE \
-     example/person.proto
-   ```
+    ```bash
+    protoc \
+      --plugin=protoc-gen-ue=protoc-gen-ue \
+      --ue_out=convert_unsigned_for_blueprint=true:./Intermediate/Proto2UE \
+      example/person.proto
+    ```
 
-   生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
+    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
+
+## 生成時オプション
+
+`proto2ue` のコード生成は `--ue_out=<option>=<value>,...:<out_dir>` 形式のパラメーターで挙動を切り替えられます。複数指定する場合はカンマ区切り (`,`)、セミコロン (`;`)、パイプ (`|`) のいずれでも区切れます。
+
+| オプション | 型 | 既定値 | 説明 |
+| -------- | -- | ------ | ---- |
+| `convert_unsigned_for_blueprint` (`convert_unsigned_to_blueprint` 別名) | bool | `false` | `uint32` や `uint64` を Blueprint で扱いやすい符号付き構造体に変換します。 |
+| `reserved_identifiers` | list | Unreal の代表的な `FVector` など | UE 側で既に利用されている識別子をカンマ区切りで上書きします。既定値を置き換えたい場合に使用します。 |
+| `extra_reserved_identifiers` | list | `[]` | 既定の予約リストに追加したい識別子を列挙します。 |
+| `reserved_identifiers_file` | path | — | 1 行 1 識別子形式のファイルを読み込み、予約済み識別子を追加します。`#` から始まる行はコメント扱いです。 |
+| `rename_overrides` | list | `{}` | `full.proto.Name:UETypeName` 形式で明示的な UE 名を指定します。複数指定する場合は区切り文字で連結します。 |
+| `rename_overrides_file` | path | — | 上記と同じ形式を 1 行ずつ記述したファイルを読み込みます。 |
+| `include_package_in_names` | bool | `true` | `example.person.Person` → `FExamplePerson` のようにパッケージ名を UE 側の型に含めるか制御します。 |
+
+CLI でファイルを渡す例:
+
+```bash
+protoc \
+  --plugin=protoc-gen-ue=protoc-gen-ue \
+  --ue_out=rename_overrides_file=./config/rename.txt,reserved_identifiers_file=./config/reserved.txt:./Intermediate/Proto2UE \
+  example/person.proto
+```
 
 5. **Unreal Engine への統合** — `Intermediate/Proto2UE` 以下を UE プロジェクトに追加し、`Build.cs` から依存ライブラリ (`google::protobuf`) を解決します。詳細な手順は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
 
