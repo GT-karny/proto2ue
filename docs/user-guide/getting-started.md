@@ -171,6 +171,19 @@ source_path.write_text(rendered.source)
 
 テスト環境では `ConvertersTemplate.python_runtime()` を用いたラウンドトリップ検証が `tests/test_codegen_converters.py` に用意されています。Unreal Engine 側では `.converters.{h,cpp}` をモジュールに追加し、`Build.cs` から protobuf ランタイムへの依存を解決してください。
 
+### CLI ショートカット (`proto2ue.tools.converter`)
+
+長めの Python スニペットを書かずに済むよう、descriptor set (`protoc --descriptor_set_out` の出力) から `.proto2ue.converters.*` を生成する CLI も用意しています。
+
+```bash
+python -m proto2ue.tools.converter \
+  Intermediate/Proto2UE/person.pb \
+  --proto examples/example/person.proto \
+  --out Intermediate/Proto2UE
+```
+
+`--proto` を複数回指定すると対象ファイルを絞り込めます。省略した場合は descriptor set に含まれるすべての proto ファイルが対象です。生成されたファイルパスは標準出力に列挙されるため、CI ログや差分確認にも利用できます。
+
 ## 5. Unreal Engine プロジェクトへの組み込み
 
 1. 生成された `.proto2ue.*` ファイルを `Source/<Module>/Private` / `Public` に配置します。Optional ラッパーは複数ファイルで共有されるため、同一ディレクトリ内にまとめます。

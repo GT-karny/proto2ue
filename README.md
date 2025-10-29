@@ -82,7 +82,7 @@ pip install protobuf pytest
       example/person.proto
     ```
 
-    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出して `.converters.{h,cpp}` を追生成してください。
+    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出すか、`python -m proto2ue.tools.converter` で `.converters.{h,cpp}` を追生成してください。
 
 ## 生成時オプション
 
