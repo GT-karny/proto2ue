@@ -61,6 +61,9 @@ class UEField:
     category: Optional[str] = None
     source: model.Field | None = None
     optional_wrapper: "UEOptionalWrapper" | None = None
+    dependency_proto: Optional[str] = None
+    map_key_dependency_proto: Optional[str] = None
+    map_value_dependency_proto: Optional[str] = None
 
 
 @dataclass(slots=True)
@@ -117,6 +120,7 @@ class UEProtoFile:
 class _UESymbol:
     kind: str
     ue_name: str
+    file_name: str
 
 
 @dataclass(slots=True)
@@ -198,9 +202,9 @@ class TypeMapper:
 
         with self._package_scope(proto_file.package):
             for enum in proto_file.enums:
-                self._register_enum(enum)
+                self._register_enum(enum, proto_file.name)
             for message in proto_file.messages:
-                self._register_message(message)
+                self._register_message(message, proto_file.name)
 
     def map_file(self, proto_file: model.ProtoFile) -> UEProtoFile:
         """Convert a :class:`model.ProtoFile` into :class:`UEProtoFile`."""
@@ -240,18 +244,18 @@ class TypeMapper:
             self._package = previous
 
     # Symbol table helpers -------------------------------------------------
-    def _register_enum(self, enum: model.Enum) -> None:
+    def _register_enum(self, enum: model.Enum, file_name: str) -> None:
         ue_name = self._compose_type_name(self._enum_prefix, enum.full_name)
-        self._symbol_table[enum.full_name] = _UESymbol("enum", ue_name)
+        self._symbol_table[enum.full_name] = _UESymbol("enum", ue_name, file_name)
 
-    def _register_message(self, message: model.Message) -> None:
+    def _register_message(self, message: model.Message, file_name: str) -> None:
         ue_name = self._compose_type_name(self._message_prefix, message.full_name)
-        self._symbol_table[message.full_name] = _UESymbol("message", ue_name)
+        self._symbol_table[message.full_name] = _UESymbol("message", ue_name, file_name)
 
         for nested_enum in message.nested_enums:
-            self._register_enum(nested_enum)
+            self._register_enum(nested_enum, file_name)
         for nested_message in message.nested_messages:
-            self._register_message(nested_message)
+            self._register_message(nested_message, file_name)
 
     def _compose_type_name(self, prefix: str, full_name: str) -> str:
         existing = self._symbol_table.get(full_name)
@@ -302,17 +306,23 @@ class TypeMapper:
         return "".join(part[:1].upper() + part[1:] for part in parts)
 
     def _lookup_symbol(self, proto_type: model.ProtoType | None, type_name: Optional[str]) -> str:
+        symbol = self._lookup_symbol_entry(proto_type, type_name)
+        return symbol.ue_name
+
+    def _lookup_symbol_entry(
+        self, proto_type: model.ProtoType | None, type_name: Optional[str]
+    ) -> _UESymbol:
         full_name: Optional[str] = None
         if proto_type is not None:
             full_name = proto_type.full_name
         elif type_name is not None:
-            full_name = type_name
+            full_name = type_name.lstrip(".")
         if not full_name:
             raise ValueError("Unable to resolve type without a full name")
         symbol = self._symbol_table.get(full_name)
         if symbol is None:
             raise KeyError(f"Type '{full_name}' was not registered in the UE symbol table")
-        return symbol.ue_name
+        return symbol
 
     # Conversion helpers ---------------------------------------------------
     def _convert_enum(self, enum: model.Enum) -> UEEnum:
@@ -405,8 +415,18 @@ class TypeMapper:
 
         is_oneof_member = field.oneof is not None
 
+        dependency_proto: Optional[str] = None
+        key_dependency_proto: Optional[str] = None
+        value_dependency_proto: Optional[str] = None
+
         if field.kind is model.FieldKind.MAP:
-            base_type, key_type, value_type = self._map_field_types(field)
+            (
+                base_type,
+                key_type,
+                value_type,
+                key_dependency_proto,
+                value_dependency_proto,
+            ) = self._map_field_types(field)
             ue_type = base_type
             container = self._map_wrapper
             is_optional = False
@@ -414,6 +434,7 @@ class TypeMapper:
             is_map = True
         else:
             base_type = self._base_type_for_field(field)
+            dependency_proto = self._field_dependency_proto(field)
             is_map = False
             key_type = None
             value_type = None
@@ -462,6 +483,9 @@ class TypeMapper:
             category=category,
             source=field,
             optional_wrapper=optional_wrapper if is_optional else None,
+            dependency_proto=dependency_proto,
+            map_key_dependency_proto=key_dependency_proto,
+            map_value_dependency_proto=value_dependency_proto,
         )
 
     def _base_type_for_field(self, field: model.Field) -> str:
@@ -478,18 +502,26 @@ class TypeMapper:
 
         raise ValueError(f"Unsupported field kind '{field.kind}' for base type resolution")
 
-    def _map_field_types(self, field: model.Field) -> Tuple[str, str, str]:
+    def _field_dependency_proto(self, field: model.Field) -> Optional[str]:
+        if field.kind not in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
+            return None
+        symbol = self._lookup_symbol_entry(field.resolved_type, field.type_name)
+        return symbol.file_name
+
+    def _map_field_types(
+        self, field: model.Field
+    ) -> Tuple[str, str, str, Optional[str], Optional[str]]:
         if field.map_entry is None:
             raise ValueError(f"Map field '{field.name}' is missing map entry metadata")
 
-        key_type = self._map_entry_part_type(
+        key_type, key_dependency = self._map_entry_part_type(
             field.map_entry.key_kind,
             field.map_entry.key_scalar,
             field.map_entry.key_resolved_type,
             field.map_entry.key_type_name,
             position="key",
         )
-        value_type = self._map_entry_part_type(
+        value_type, value_dependency = self._map_entry_part_type(
             field.map_entry.value_kind,
             field.map_entry.value_scalar,
             field.map_entry.value_resolved_type,
@@ -497,7 +529,7 @@ class TypeMapper:
             position="value",
         )
         map_type = f"{self._map_wrapper}<{key_type}, {value_type}>"
-        return map_type, key_type, value_type
+        return map_type, key_type, value_type, key_dependency, value_dependency
 
     def _ensure_optional_wrapper(
         self, base_type: str, *, value_blueprint_type: bool
@@ -567,16 +599,17 @@ class TypeMapper:
         type_name: Optional[str],
         *,
         position: str,
-    ) -> str:
+    ) -> Tuple[str, Optional[str]]:
         if kind is model.FieldKind.SCALAR:
             if scalar is None:
                 raise ValueError(f"Map {position} is scalar but scalar name is missing")
             mapped = self._SCALAR_MAPPING.get(scalar)
             if mapped is None:
                 raise KeyError(f"Unsupported scalar map {position} type '{scalar}'")
-            return mapped
+            return mapped, None
         if kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
-            return self._lookup_symbol(resolved, type_name)
+            symbol = self._lookup_symbol_entry(resolved, type_name)
+            return symbol.ue_name, symbol.file_name
         raise ValueError(f"Unsupported map {position} kind '{kind}'")
 
     # Metadata helpers -----------------------------------------------------

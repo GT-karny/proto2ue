@@ -180,3 +180,47 @@ def test_renderer_splits_namespace_segments() -> None:
     assert header_output.index("UE_NAMESPACE_END(example)") < header_output.index(
         "UE_NAMESPACE_END(demo)"
     )
+
+
+def test_renderer_includes_external_dependencies() -> None:
+    request = plugin_pb2.CodeGeneratorRequest()
+
+    shared_proto = request.proto_file.add()
+    shared_proto.name = "common/shared.proto"
+    shared_proto.package = "common"
+    shared_message = shared_proto.message_type.add()
+    shared_message.name = "Shared"
+    shared_field = shared_message.field.add()
+    shared_field.name = "display_name"
+    shared_field.number = 1
+    shared_field.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    shared_field.type = descriptor_pb2.FieldDescriptorProto.TYPE_STRING
+
+    person_proto = request.proto_file.add()
+    person_proto.name = "example/person.proto"
+    person_proto.package = "example"
+    person_proto.dependency.append("common/shared.proto")
+    person_message = person_proto.message_type.add()
+    person_message.name = "Person"
+
+    shared_ref = person_message.field.add()
+    shared_ref.name = "shared"
+    shared_ref.number = 1
+    shared_ref.label = descriptor_pb2.FieldDescriptorProto.LABEL_OPTIONAL
+    shared_ref.type = descriptor_pb2.FieldDescriptorProto.TYPE_MESSAGE
+    shared_ref.type_name = ".common.Shared"
+
+    request.file_to_generate.append("common/shared.proto")
+    request.file_to_generate.append("example/person.proto")
+
+    response = generate_code(request)
+
+    files = {file.name: file.content for file in response.file}
+    header_output = files["example/person.proto2ue.h"]
+
+    assert '#include "common/shared.proto2ue.h"' in header_output
+
+    include_lines = [
+        line for line in header_output.splitlines() if line.startswith("#include ")
+    ]
+    assert include_lines[-1] == '#include "example/person.proto2ue.generated.h"'
