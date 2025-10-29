@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from .. import model
+from . import sanitize_generated_filename
 from ..type_mapper import UEField, UEMessage, UEProtoFile
 
 
@@ -1395,11 +1396,11 @@ class ConvertersTemplate:
 
     def _generated_header_name(self) -> str:
         base = self._base_name()
-        return f"{base}.proto2ue.h"
+        return sanitize_generated_filename(f"{base}.proto2ue.h")
 
     def _generated_converters_header(self) -> str:
         base = self._base_name()
-        return f"{base}.proto2ue.converters.h"
+        return sanitize_generated_filename(f"{base}.proto2ue.converters.h")
 
     def _proto_message_header_name(self) -> str:
         base = self._base_name()
@@ -1415,7 +1416,7 @@ class ConvertersTemplate:
             if dependency == source.name:
                 continue
             base = dependency[:-6] if dependency.endswith(".proto") else dependency
-            include = f"{base}.proto2ue.converters.h"
+            include = sanitize_generated_filename(f"{base}.proto2ue.converters.h")
             if include not in seen:
                 seen.add(include)
                 includes.append(include)
