@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Dict, Iterable, List, Optional, Protocol
 
+import hashlib
 import re
 
 from ..type_mapper import (
@@ -49,6 +50,10 @@ def sanitize_generated_filename(name: str) -> str:
     sanitized_base = re.sub(r"[^0-9A-Za-z_]", "_", base)
     if not sanitized_base:
         sanitized_base = "_"
+
+    if sanitized_base != base:
+        digest = hashlib.sha1(base.encode("utf-8")).hexdigest()[:8]
+        sanitized_base = f"{sanitized_base}_{digest}"
 
     return f"{prefix}{sanitized_base}{ext}"
 
