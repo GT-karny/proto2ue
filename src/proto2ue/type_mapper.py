@@ -9,6 +9,7 @@ import re
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from . import model
+from .config import GeneratorConfig
 
 
 @dataclass(slots=True)
@@ -171,12 +172,14 @@ class TypeMapper:
     def __init__(
         self,
         *,
+        config: GeneratorConfig | None = None,
         message_prefix: str = "F",
         enum_prefix: str = "E",
         optional_wrapper: str = "FProtoOptional",
         array_wrapper: str = "TArray",
         map_wrapper: str = "TMap",
     ) -> None:
+        self._config = config or GeneratorConfig()
         self._message_prefix = message_prefix
         self._enum_prefix = enum_prefix
         self._optional_wrapper_prefix = optional_wrapper
@@ -468,10 +471,7 @@ class TypeMapper:
         if field.kind is model.FieldKind.SCALAR:
             if not field.scalar:
                 raise ValueError(f"Scalar field '{field.name}' does not provide a scalar name")
-            mapped = self._SCALAR_MAPPING.get(field.scalar)
-            if mapped is None:
-                raise KeyError(f"Unsupported scalar type '{field.scalar}' for field '{field.name}'")
-            return mapped
+            return self._scalar_to_ue_type(field.scalar, field_name=field.name)
 
         if field.kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
             return self._lookup_symbol(field.resolved_type, field.type_name)
@@ -571,10 +571,7 @@ class TypeMapper:
         if kind is model.FieldKind.SCALAR:
             if scalar is None:
                 raise ValueError(f"Map {position} is scalar but scalar name is missing")
-            mapped = self._SCALAR_MAPPING.get(scalar)
-            if mapped is None:
-                raise KeyError(f"Unsupported scalar map {position} type '{scalar}'")
-            return mapped
+            return self._scalar_to_ue_type(scalar, position=position)
         if kind in (model.FieldKind.MESSAGE, model.FieldKind.ENUM):
             return self._lookup_symbol(resolved, type_name)
         raise ValueError(f"Unsupported map {position} kind '{kind}'")
@@ -587,6 +584,29 @@ class TypeMapper:
         if isinstance(unreal, dict):
             return unreal
         return {}
+
+    def _scalar_to_ue_type(
+        self, scalar: str, *, field_name: str | None = None, position: str | None = None
+    ) -> str:
+        mapped = self._SCALAR_MAPPING.get(scalar)
+        if mapped is None:
+            if field_name is not None:
+                raise KeyError(
+                    f"Unsupported scalar type '{scalar}' for field '{field_name}'"
+                )
+            if position is not None:
+                raise KeyError(f"Unsupported scalar map {position} type '{scalar}'")
+            raise KeyError(f"Unsupported scalar type '{scalar}'")
+        return self._blueprint_unsigned_override(mapped)
+
+    def _blueprint_unsigned_override(self, ue_type: str) -> str:
+        if not self._config.convert_unsigned_to_blueprint:
+            return ue_type
+        if ue_type == "uint32":
+            return "int32"
+        if ue_type == "uint64":
+            return "int64"
+        return ue_type
 
     def _as_bool(self, value: object, *, default: bool = False) -> bool:
         if value is None:
