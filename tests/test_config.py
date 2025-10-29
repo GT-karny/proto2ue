@@ -8,6 +8,7 @@ from proto2ue.config import DEFAULT_RESERVED_IDENTIFIERS, GeneratorConfig
 def test_generator_config_defaults_include_reserved_identifiers() -> None:
     config = GeneratorConfig.from_parameter_string(None)
     assert config.reserved_identifiers == DEFAULT_RESERVED_IDENTIFIERS
+    assert config.include_package_in_names is True
 
 
 def test_generator_config_allows_overriding_reserved_identifiers(tmp_path) -> None:
@@ -51,6 +52,12 @@ def test_generator_config_parses_rename_overrides(tmp_path) -> None:
         "physics.Vector": "FPhysicsVector",
         "physics.Color": "EPhysicsColor",
     }
+
+
+def test_generator_config_allows_disabling_package_names() -> None:
+    config = GeneratorConfig.from_parameter_string("include_package_in_names=false")
+
+    assert config.include_package_in_names is False
 
 
 def test_generator_config_rename_overrides_require_separator() -> None:
