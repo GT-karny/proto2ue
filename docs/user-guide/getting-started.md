@@ -133,7 +133,7 @@ protoc \
 
 ## 4. 変換ヘルパー (`ConvertersTemplate`) の生成
 
-`ConvertersTemplate` は UE 構造体と protobuf メッセージ間の変換関数、エラー収集クラス (`FConversionContext`)、Blueprint から利用可能なシリアライズ API (`UProto2UEBlueprintLibrary`) を生成します。現状は Python から明示的に呼び出して `.proto2ue.converters.{h,cpp}` を出力します。先ほど生成した descriptor set (`Intermediate/Proto2UE/person.pb`) を使ってロードします。
+`ConvertersTemplate` は UE 構造体と protobuf メッセージ間の変換関数、エラー収集クラス (`FConversionContext`)、Blueprint から利用可能なシリアライズ API (`UProto2UEBlueprintLibrary`) を生成します。現状は Python から明示的に呼び出して `.proto2ue_converters.{h,cpp}` を出力します。先ほど生成した descriptor set (`Intermediate/Proto2UE/person.pb`) を使ってロードします。
 
 ```python
 from pathlib import Path
@@ -162,8 +162,8 @@ ue_file = TypeMapper().map_file(loader.get_file(target.name))
 rendered = ConvertersTemplate(ue_file).render()
 
 out_root = Path("Intermediate/Proto2UE")
-header_path = out_root / Path(ue_file.name).with_suffix(".proto2ue.converters.h")
-source_path = out_root / Path(ue_file.name).with_suffix(".proto2ue.converters.cpp")
+header_path = out_root / Path(ue_file.name).with_suffix(".proto2ue_converters.h")
+source_path = out_root / Path(ue_file.name).with_suffix(".proto2ue_converters.cpp")
 header_path.parent.mkdir(parents=True, exist_ok=True)
 header_path.write_text(rendered.header)
 source_path.write_text(rendered.source)
@@ -173,7 +173,7 @@ source_path.write_text(rendered.source)
 
 ### CLI ショートカット (`proto2ue.tools.converter`)
 
-長めの Python スニペットを書かずに済むよう、descriptor set (`protoc --descriptor_set_out` の出力) から `.proto2ue.converters.*` を生成する CLI も用意しています。
+長めの Python スニペットを書かずに済むよう、descriptor set (`protoc --descriptor_set_out` の出力) から `.proto2ue_converters.*` を生成する CLI も用意しています。
 
 ```bash
 python -m proto2ue.tools.converter \

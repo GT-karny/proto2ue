@@ -1400,7 +1400,7 @@ class ConvertersTemplate:
 
     def _generated_converters_header(self) -> str:
         base = self._base_name()
-        return sanitize_generated_filename(f"{base}.proto2ue.converters.h")
+        return sanitize_generated_filename(f"{base}.proto2ue_converters.h")
 
     def _proto_message_header_name(self) -> str:
         base = self._base_name()
@@ -1416,7 +1416,7 @@ class ConvertersTemplate:
             if dependency == source.name:
                 continue
             base = dependency[:-6] if dependency.endswith(".proto") else dependency
-            include = sanitize_generated_filename(f"{base}.proto2ue.converters.h")
+            include = sanitize_generated_filename(f"{base}.proto2ue_converters.h")
             if include not in seen:
                 seen.add(include)
                 includes.append(include)

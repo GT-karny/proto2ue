@@ -40,8 +40,8 @@ def test_generate_converters_creates_outputs(tmp_path: Path) -> None:
 
     generated = converter.generate_converters(descriptor_path, ["example/person.proto"], output_dir)
 
-    header_path = output_dir / "example" / "person.proto2ue.converters.h"
-    source_path = output_dir / "example" / "person.proto2ue.converters.cpp"
+    header_path = output_dir / "example" / "person.proto2ue_converters.h"
+    source_path = output_dir / "example" / "person.proto2ue_converters.cpp"
 
     assert header_path in generated
     assert source_path in generated
@@ -61,8 +61,8 @@ def test_main_defaults_to_all_targets(tmp_path: Path, capsys: pytest.CaptureFixt
     assert exit_code == 0
 
     captured = capsys.readouterr()
-    assert "person.proto2ue.converters.h" in captured.out
-    assert "person.proto2ue.converters.cpp" in captured.out
+    assert "person.proto2ue_converters.h" in captured.out
+    assert "person.proto2ue_converters.cpp" in captured.out
 
-    assert (output_dir / "example" / "person.proto2ue.converters.h").exists()
-    assert (output_dir / "example" / "person.proto2ue.converters.cpp").exists()
+    assert (output_dir / "example" / "person.proto2ue_converters.h").exists()
+    assert (output_dir / "example" / "person.proto2ue_converters.cpp").exists()
