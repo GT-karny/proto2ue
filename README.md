@@ -37,9 +37,12 @@ plan/                ─ フェーズ別の開発プラン
 
 Python 3.11 以上と `protobuf` が必要です。開発環境では追加で `pytest` を使用します。
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
+> 以降のコマンド例は特記がない限り、リポジトリのルート ディレクトリ (`proto2ue`) をカレントディレクトリにして PowerShell から実行します。
+
+```powershell
+# カレントディレクトリ: リポジトリルート (proto2ue)
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install protobuf pytest
 ```
@@ -48,41 +51,111 @@ pip install protobuf pytest
 
 1. **ユニットテストの実行** — 依存関係が揃っていることを `pytest` で確認します。
 
-   ```bash
+   ```powershell
+   # カレントディレクトリ: リポジトリルート (proto2ue)
    pytest
    ```
 
 2. **`proto2ue` を Python から参照可能にする** — `protoc` がローカルコピーの `proto2ue` を読み込めるようにします。開発環境であれば editable インストールするか、`PYTHONPATH` に `src/` を追加してください。
 
-   ```bash
+   ```powershell
+   # カレントディレクトリ: リポジトリルート (proto2ue)
    pip install -e .
-   # もしくは: export PYTHONPATH="$(pwd)/src:${PYTHONPATH}"
+   # もしくは:
+   $env:PYTHONPATH = "${PWD}\src;${env:PYTHONPATH}"
    ```
 
-3. **`protoc` プラグインの登録** — `proto2ue.plugin` を実行するラッパースクリプトを作成します (例では `~/.local/bin` に配置)。
+3. **`protoc` プラグインの登録** — `proto2ue.plugin` を実行するラッパースクリプトを `protoc-gen-ue` という名前で仮想環境内 (`.venv\Scripts`) に作成します。`protoc` は Windows では `.cmd` や `.bat` 拡張子のラッパーを自動解決できるため、以下の例では `protoc-gen-ue.cmd` を生成します。
 
-   ```bash
-   cat <<'SCRIPT' > ~/.local/bin/protoc-gen-ue
-   #!/usr/bin/env python3
-   from proto2ue import plugin
-
-   if __name__ == "__main__":
-       plugin.main()
-   SCRIPT
-   chmod +x ~/.local/bin/protoc-gen-ue
-   export PATH="$HOME/.local/bin:$PATH"
+   ```powershell
+   # カレントディレクトリ: リポジトリルート (proto2ue)
+   $pluginScript = Join-Path (Resolve-Path ".\.venv\Scripts") "protoc-gen-ue.cmd"
+   Set-Content -Path $pluginScript -Encoding ascii -Value @'
+@echo off
+setlocal
+"%~dp0python.exe" -m proto2ue.plugin %*
+endlocal
+'@
    ```
 
-4. **コード生成** — サンプル proto (`example/person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`_proto2ue_converters.h/.cpp`) です。`--ue_out=<options>:<out_dir>` 形式で出力ディレクトリと生成時オプションを指定できます。
+   仮想環境をアクティブにすると `.venv\Scripts` が `PATH` に加わるため、`--plugin=protoc-gen-ue=protoc-gen-ue` と指定するだけで仮想環境の Python を用いたプラグインが呼び出せます。グローバル Python を使用する場合は、スクリプトを任意のディレクトリに配置し、`PATH` を調整してください。
 
-    ```bash
-    protoc \
-      --plugin=protoc-gen-ue=protoc-gen-ue \
-      --ue_out=convert_unsigned_for_blueprint=true:./Intermediate/Proto2UE \
-      example/person.proto
+4. **コード生成** — サンプル proto (`example\person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`_proto2ue_converters.h/.cpp`) です。`--ue_out=<options>:<out_dir>` 形式で出力ディレクトリと生成時オプションを指定できます。
+
+    ```powershell
+    # カレントディレクトリ: リポジトリルート (proto2ue)
+    protoc `
+      --plugin=protoc-gen-ue=protoc-gen-ue `
+      --ue_out=convert_unsigned_for_blueprint=true:.\Intermediate\Proto2UE `
+      example\person.proto
     ```
 
     生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出すか、`python -m proto2ue.tools.converter` で `_proto2ue_converters.{h,cpp}` を追生成してください。
+
+## 使用方法
+
+上記のコマンド例で用いた `protoc` 呼び出しを、各パラメーターに分解して確認します。
+
+```powershell
+# カレントディレクトリ: リポジトリルート (proto2ue)
+protoc `
+  --plugin=protoc-gen-ue=protoc-gen-ue `   # (1)
+  --ue_out=convert_unsigned_for_blueprint=true:.\Intermediate\Proto2UE `   # (2)
+  example\person.proto   # (3)
+```
+
+1. **`--plugin=protoc-gen-ue=protoc-gen-ue`** — `protoc` から `proto2ue` プラグインを呼び出すための登録です。左辺 (`protoc-gen-ue`) がプラグイン名、右辺が実行可能ファイル／スクリプトのパスです。仮想環境を有効化していれば `.venv\Scripts` が `PATH` に入るため、名前だけで参照できます。
+2. **`--ue_out=...:<out_dir>`** — Unreal Engine 向けコードの出力先とオプションをまとめて指定します。コロン (`:`) の左側にカンマ区切りのオプション、右側に生成先ディレクトリを記述します。複数の `.proto` を渡した場合でも同じディレクトリに展開されます。
+3. **`example\person.proto`** — 入力する proto スキーマのパスです。`-I` オプションでインクルードパスを追加しながら複数ファイルを列挙できます。
+
+### 主なオプションの使い分け
+
+- **`--plugin`**
+  - 役割: `protoc` にカスタムコード生成プラグインを登録します。
+  - 設定例: `--plugin=protoc-gen-ue=.\.venv\Scripts\protoc-gen-ue.cmd`。
+  - よくある組み合わせ: 仮想環境を有効化して `.venv\Scripts` を `PATH` に追加した状態で `--ue_out` とセットで指定します。
+- **`--ue_out`**
+  - 役割: UE 向けコード生成の出力ディレクトリとオプション (`convert_unsigned_for_blueprint` など) をまとめて渡します。
+  - 設定例: `--ue_out=convert_unsigned_for_blueprint=true,reserved_identifiers_file=.\config\reserved.txt:.\Intermediate\Proto2UE`。
+  - よくある組み合わせ: `--plugin=protoc-gen-ue=...` と同時に指定し、`--descriptor_set_out` や `--proto_path/-I` で入力依存関係を解決しながら実行します。
+- **`--descriptor_set_out`**
+  - 役割: `protoc` が出力する `FileDescriptorSet` (バイナリ) を保存します。`proto2ue` の追加処理や CI での差分比較に活用できます。
+  - 設定例: `--descriptor_set_out=.\Intermediate\Descriptors\example.pb`。
+  - よくある組み合わせ: `--include_imports` と一緒に指定して依存 proto をまとめる、`--ue_out` とセットで Unreal 用コードと記述子を同時生成するケースが一般的です。
+
+### 生成物と次のステップ
+
+1. `--ue_out` の出力先 (`.\Intermediate\Proto2UE` など) に、各 proto ごとに `<name>.proto2ue.h/.cpp` とコンバーター補助の `<name>_proto2ue_converters.h/.cpp` が生成されます。
+2. 追加のコンバーター機能が必要な場合は `python -m proto2ue.tools.converter` で Blueprint 互換のヘルパーを生成します。
+3. 生成コードを Unreal Engine プロジェクトのモジュールに組み込み、`Build.cs` で `protobuf` ライブラリを参照します。詳細は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
+
+### コンバーター CLI (`proto2ue.tools.converter`) の使用例
+
+1. `--descriptor_set_out` で descriptor set を保存すると、複数 proto の依存関係をまとめて後段処理できます。`--include_imports` を併用すると依存 proto も含まれるため、`proto2ue.tools.converter` に渡すだけで済みます。
+
+   ```powershell
+   # カレントディレクトリ: リポジトリルート (proto2ue)
+   protoc `
+     --plugin=protoc-gen-ue=protoc-gen-ue `
+     --ue_out=.\Intermediate\Proto2UE `
+     --descriptor_set_out=.\Intermediate\Descriptors\person.pb `
+     --include_imports `
+     example\person.proto
+   ```
+
+2. 仮想環境を有効化した状態で CLI を呼び出し、出力ディレクトリを指定します。`--proto` を複数回与えると対象ファイルを絞り込めます (省略時は descriptor set に含まれる全ファイルが対象です)。
+
+   ```powershell
+   # カレントディレクトリ: リポジトリルート (proto2ue)
+   python -m proto2ue.tools.converter `
+     .\Intermediate\Descriptors\person.pb `
+     --proto example\person.proto `
+     --out .\Intermediate\Proto2UE
+   ```
+
+   実行すると生成された `_proto2ue_converters.{h,cpp}` のパスが標準出力に表示されるため、CI ログや差分確認にも活用できます。Python ランタイムで変換結果を検証したい場合は `proto2ue.codegen.converters.ConvertersTemplate.python_runtime()` も併用してください。
+
+3. 出力された `_proto2ue_converters.*` を `.proto2ue.*` と同じフォルダーに配置し、UE プロジェクトのモジュールに追加します。`UProto2UEBlueprintLibrary` を `BlueprintFunctionLibrary` として登録すると、`ToProtoBytes` / `FromProtoBytes` で Blueprint から直ちに利用できます。
 
 ## 生成時オプション
 
@@ -100,11 +173,12 @@ pip install protobuf pytest
 
 CLI でファイルを渡す例:
 
-```bash
-protoc \
-  --plugin=protoc-gen-ue=protoc-gen-ue \
-  --ue_out=rename_overrides_file=./config/rename.txt,reserved_identifiers_file=./config/reserved.txt:./Intermediate/Proto2UE \
-  example/person.proto
+```powershell
+# カレントディレクトリ: リポジトリルート (proto2ue)
+protoc `
+  --plugin=protoc-gen-ue=protoc-gen-ue `
+  --ue_out=rename_overrides_file=.\config\rename.txt,reserved_identifiers_file=.\config\reserved.txt:.\Intermediate\Proto2UE `
+  example\person.proto
 ```
 
 5. **Unreal Engine への統合** — `Intermediate/Proto2UE` 以下を UE プロジェクトに追加し、`Build.cs` から依存ライブラリ (`google::protobuf`) を解決します。詳細な手順は [ユーザーガイド](docs/user-guide/README.md) を参照してください。
@@ -119,7 +193,8 @@ protoc \
 
 `pytest` が DescriptorLoader・TypeMapper・コード生成・Python コンバーターをカバーするゴールデンテスト／ラウンドトリップテストを提供します。
 
-```bash
+```powershell
+# カレントディレクトリ: リポジトリルート (proto2ue)
 pytest
 ```
 
