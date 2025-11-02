@@ -70,7 +70,7 @@ pip install protobuf pytest
    ```powershell
    # カレントディレクトリ: リポジトリルート (proto2ue)
    $pluginScript = Join-Path (Resolve-Path ".\.venv\Scripts") "protoc-gen-ue.cmd"
-   Set-Content -Path $pluginScript -Value @'
+   Set-Content -Path $pluginScript -Encoding ascii -Value @'
 @echo off
 setlocal
 "%~dp0python.exe" -m proto2ue.plugin %*
