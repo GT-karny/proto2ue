@@ -1,0 +1,39 @@
+syntax = "proto2";
+
+package example;
+
+enum Color {
+  COLOR_UNSPECIFIED = 0;
+  COLOR_RED = 1;
+}
+
+message Meta {
+  optional string created_by = 1;
+}
+
+message Person {
+  message Attributes {
+    optional string nickname = 1;
+  }
+
+  enum Mood {
+    MOOD_UNSPECIFIED = 0;
+    MOOD_HAPPY = 1;
+  }
+
+  message LabelsEntry {
+    optional string key = 1;
+    optional Meta value = 2;
+  }
+
+  optional int32 id = 1;
+  repeated float scores = 2;
+  repeated LabelsEntry labels = 3;
+  optional Color primary_color = 4;
+  optional Attributes attributes = 5;
+  oneof contact {
+    string email = 6;
+    string phone = 7;
+  }
+  optional Mood mood = 8;
+}
