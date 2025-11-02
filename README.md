@@ -72,48 +72,49 @@ pip install protobuf pytest
    $pluginScript = Join-Path (Resolve-Path ".\.venv\Scripts") "protoc-gen-ue.cmd"
    Set-Content -Path $pluginScript -Encoding ascii -Value @'
 @echo off
-setlocal
-"%~dp0python.exe" -m proto2ue.plugin %*
-endlocal
+python -m proto2ue.plugin %*
 '@
    ```
 
-   仮想環境をアクティブにすると `.venv\Scripts` が `PATH` に加わるため、`--plugin=protoc-gen-ue=protoc-gen-ue` と指定するだけで仮想環境の Python を用いたプラグインが呼び出せます。グローバル Python を使用する場合は、スクリプトを任意のディレクトリに配置し、`PATH` を調整してください。
+   仮想環境をアクティブにすると `.venv\Scripts` が `PATH` に加わるため、`--plugin="protoc-gen-ue=.\.venv\Scripts\protoc-gen-ue.cmd"` のように明示的なパスを渡すだけで仮想環境の Python を用いたプラグインが呼び出せます。簡素化したラッパーと明示的なプラグイン指定は Windows (PowerShell) で動作検証済みです。グローバル Python を使用する場合は、スクリプトを任意のディレクトリに配置し、`PATH` を調整してください。
 
 4. **コード生成** — サンプル proto (`example\person.proto`) を UE 向けに変換します。生成結果は `.proto2ue.h/.cpp` とコンバーター (`_proto2ue_converters.h/.cpp`) です。`--ue_out=<options>:<out_dir>` 形式で出力ディレクトリと生成時オプションを指定できます。
 
     ```powershell
-    # カレントディレクトリ: リポジトリルート (proto2ue)
+    # カレントディレクトリ: リポジトリ内の src
     protoc `
-      --plugin=protoc-gen-ue=protoc-gen-ue `
-      --ue_out=convert_unsigned_for_blueprint=true:.\Intermediate\Proto2UE `
+      --plugin="protoc-gen-ue=..\.venv\Scripts\protoc-gen-ue.cmd" `
+      --proto_path=. `
+      --ue_out=convert_unsigned_for_blueprint=true:..\out `
       example\person.proto
     ```
 
-    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出すか、`python -m proto2ue.tools.converter` で `_proto2ue_converters.{h,cpp}` を追生成してください。
+    生成されたヘッダーは `FProtoOptional*` ラッパーや `UE_NAMESPACE_BEGIN/END` ブロックを含みます。上記コマンドは Windows 上でラッパーを `.venv\Scripts` に配置して実行した検証済みの手順です。`ConvertersTemplate` を利用する場合は、`proto2ue.codegen.converters` を Python から呼び出すか、`python -m proto2ue.tools.converter` で `_proto2ue_converters.{h,cpp}` を追生成してください。
 
 ## 使用方法
 
 上記のコマンド例で用いた `protoc` 呼び出しを、各パラメーターに分解して確認します。
 
 ```powershell
-# カレントディレクトリ: リポジトリルート (proto2ue)
+# カレントディレクトリ: リポジトリ内の src
 protoc `
-  --plugin=protoc-gen-ue=protoc-gen-ue `   # (1)
-  --ue_out=convert_unsigned_for_blueprint=true:.\Intermediate\Proto2UE `   # (2)
-  example\person.proto   # (3)
+  --plugin="protoc-gen-ue=..\.venv\Scripts\protoc-gen-ue.cmd" `   # (1)
+  --proto_path=. `   # (2)
+  --ue_out=convert_unsigned_for_blueprint=true:..\out `   # (3)
+  example\person.proto   # (4)
 ```
 
-1. **`--plugin=protoc-gen-ue=protoc-gen-ue`** — `protoc` から `proto2ue` プラグインを呼び出すための登録です。左辺 (`protoc-gen-ue`) がプラグイン名、右辺が実行可能ファイル／スクリプトのパスです。仮想環境を有効化していれば `.venv\Scripts` が `PATH` に入るため、名前だけで参照できます。
-2. **`--ue_out=...:<out_dir>`** — Unreal Engine 向けコードの出力先とオプションをまとめて指定します。コロン (`:`) の左側にカンマ区切りのオプション、右側に生成先ディレクトリを記述します。複数の `.proto` を渡した場合でも同じディレクトリに展開されます。
-3. **`example\person.proto`** — 入力する proto スキーマのパスです。`-I` オプションでインクルードパスを追加しながら複数ファイルを列挙できます。
+1. **`--plugin=protoc-gen-ue=...`** — `protoc` から `proto2ue` プラグインを呼び出すための登録です。左辺 (`protoc-gen-ue`) がプラグイン名、右辺が実行可能ファイル／スクリプトのパスです。仮想環境を有効化していれば `.venv\Scripts` が `PATH` に入るため名前だけでも参照できますが、上記のように `--plugin="protoc-gen-ue=.\.venv\Scripts\protoc-gen-ue.cmd"` と明示的なパスを渡す方法は Windows で検証済みの手順として推奨されます。
+2. **`--proto_path` (`-I`)** — インクルード検索パスを追加します。ここでは `src` をカレントディレクトリにしているため `.` を指定しています。複数指定する場合はオプションを繰り返してください。
+3. **`--ue_out=...:<out_dir>`** — Unreal Engine 向けコードの出力先とオプションをまとめて指定します。コロン (`:`) の左側にカンマ区切りのオプション、右側に生成先ディレクトリを記述します。複数の `.proto` を渡した場合でも同じディレクトリに展開されます。
+4. **`example\person.proto`** — 入力する proto スキーマのパスです。`-I` オプションでインクルードパスを追加しながら複数ファイルを列挙できます。
 
 ### 主なオプションの使い分け
 
 - **`--plugin`**
   - 役割: `protoc` にカスタムコード生成プラグインを登録します。
-  - 設定例: `--plugin=protoc-gen-ue=.\.venv\Scripts\protoc-gen-ue.cmd`。
-  - よくある組み合わせ: 仮想環境を有効化して `.venv\Scripts` を `PATH` に追加した状態で `--ue_out` とセットで指定します。
+  - 設定例: `--plugin="protoc-gen-ue=.\.venv\Scripts\protoc-gen-ue.cmd"`。
+  - よくある組み合わせ: 仮想環境を有効化し `.venv\Scripts` を `PATH` に追加した状態で `--ue_out` とセットで指定します。PATH を通せない環境でも、検証済みの明示的なパス指定で同様に利用できます。
 - **`--ue_out`**
   - 役割: UE 向けコード生成の出力ディレクトリとオプション (`convert_unsigned_for_blueprint` など) をまとめて渡します。
   - 設定例: `--ue_out=convert_unsigned_for_blueprint=true,reserved_identifiers_file=.\config\reserved.txt:.\Intermediate\Proto2UE`。
